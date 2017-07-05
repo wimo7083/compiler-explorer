@@ -4,12 +4,12 @@
 Compiler Explorer
 ------------
 
-Compiler Explorer is an interactive compiler. The left-hand pane shows editable C/C++/Rust/Go/D/Haskell code. The right, the
+Compiler Explorer is an interactive compiler. The left-hand pane shows editable C/C++/Rust/Go/D/Haskell/Swift code. The right, the
 assembly output of having compiled the code with a given compiler and settings. Multiple compilers are supported, and
 the UI layout is configurable (the [Golden Layout](https://www.golden-layout.com/) library is used for this).
 There is also an ispc compiler for a C variant with extensions for SPMD.
 
-Try out one of the demo sites: [C++][cpp], [Rust][rust], [D][d], [Go][go], [Haskell][haskell] or [ispc][ispc].
+Try out one of the demo sites: [C++][cpp], [Rust][rust], [D][d], [Go][go], [Haskell][haskell], [Swif][swift], [ispc][ispc].
 
 [cpp]: https://gcc.godbolt.org/ "Compiler Explorer for C++"
 [rust]: https://rust.godbolt.org/ "Compiler Explorer for Rust"
@@ -17,6 +17,7 @@ Try out one of the demo sites: [C++][cpp], [Rust][rust], [D][d], [Go][go], [Hask
 [go]: https://go.godbolt.org/ "Compiler Explorer for Go"
 [ispc]: https://ispc.godbolt.org/ "Compiler Explorer for ispc"
 [haskell]: https://haskell.godbolt.org/ "Compiler Explorer for Haskell"
+[swift]: https://swift.godbolt.org/ "Compiler Explorer for Swift"
 
 You can support this [this project on Patreon](https://patreon.com/mattgodbolt).
 

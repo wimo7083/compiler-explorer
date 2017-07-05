@@ -196,12 +196,11 @@ define(function (require) {
         this.eventHub.on('findCompilers', this.sendCompiler, this);
         this.eventHub.on('compilerSetDecorations', this.onCompilerSetDecorations, this);
         this.eventHub.on('settingsChange', this.onSettingsChange, this);
-        this.eventHub.on('themeChange', this.onThemeChange, this);
         this.eventHub.on('optViewClosed', this.onOptViewClosed, this);
         this.eventHub.on('astViewOpened', this.onAstViewOpened, this);
         this.eventHub.on('astViewClosed', this.onAstViewClosed, this);
+        this.eventHub.on('resize', this.resize, this);
         this.eventHub.emit('requestSettings');
-        this.eventHub.emit('requestTheme');
         this.sendCompiler();
         this.updateCompilerName();
         this.updateButtons();
@@ -352,44 +351,46 @@ define(function (require) {
     // Use highlight providers? hover providers? highlight providers?
     Compiler.prototype.setAssembly = function (assembly) {
         this.assembly = assembly;
-        this.outputEditor.getModel().setValue(_.pluck(assembly, 'text').join("\n"));
-        var addrToAddrDiv = {};
-        var decorations = [];
-        _.each(this.assembly, _.bind(function (obj, line) {
-            var address = obj.address ? obj.address.toString(16) : "";
-            //     var div = $("<div class='address cm-number'>" + address + "</div>");
-            addrToAddrDiv[address] = {div: "moo", line: line};
-        }, this));
+        if (this.outputEditor.getModel()) {
+            this.outputEditor.getModel().setValue(_.pluck(assembly, 'text').join("\n"));
+            var addrToAddrDiv = {};
+            var decorations = [];
+            _.each(this.assembly, _.bind(function (obj, line) {
+                var address = obj.address ? obj.address.toString(16) : "";
+                //     var div = $("<div class='address cm-number'>" + address + "</div>");
+                addrToAddrDiv[address] = {div: "moo", line: line};
+            }, this));
 
-        _.each(this.assembly, _.bind(function (obj, line) {
-            if (obj.links) {
-                _.each(obj.links, _.bind(function (link) {
-                    var address = link.to.toString(16);
-                    // var thing = $("<a href='#' class='cm-number'>" + address + "</a>");
-                    // this.outputEditor.markText(
-                    //     from, to, {replacedWith: thing[0], handleMouseEvents: false});
-                    var dest = addrToAddrDiv[address];
-                    if (dest) {
-                        decorations.push({
-                            range: new monaco.Range(line, link.offset, line, link.offset + link.length),
-                            options: {}
-                        });
-                        // var editor = this.outputEditor;
-                        // thing.hover(function (e) {
-                        //     var entered = e.type == "mouseenter";
-                        //     dest.div.toggleClass("highlighted", entered);
-                        //     thing.toggleClass("highlighted", entered);
-                        // });
-                        // thing.on('click', function (e) {
-                        //     editor.scrollIntoView({line: dest.line, ch: 0}, 30);
-                        //     dest.div.toggleClass("highlighted", false);
-                        //     thing.toggleClass("highlighted", false);
-                        //     e.preventDefault();
-                        // });
-                    }
-                }, this));
-            }
-        }, this));
+            _.each(this.assembly, _.bind(function (obj, line) {
+                if (obj.links) {
+                    _.each(obj.links, _.bind(function (link) {
+                        var address = link.to.toString(16);
+                        // var thing = $("<a href='#' class='cm-number'>" + address + "</a>");
+                        // this.outputEditor.markText(
+                        //     from, to, {replacedWith: thing[0], handleMouseEvents: false});
+                        var dest = addrToAddrDiv[address];
+                        if (dest) {
+                            decorations.push({
+                                range: new monaco.Range(line, link.offset, line, link.offset + link.length),
+                                options: {}
+                            });
+                            // var editor = this.outputEditor;
+                            // thing.hover(function (e) {
+                            //     var entered = e.type == "mouseenter";
+                            //     dest.div.toggleClass("highlighted", entered);
+                            //     thing.toggleClass("highlighted", entered);
+                            // });
+                            // thing.on('click', function (e) {
+                            //     editor.scrollIntoView({line: dest.line, ch: 0}, 30);
+                            //     dest.div.toggleClass("highlighted", false);
+                            //     thing.toggleClass("highlighted", false);
+                            //     e.preventDefault();
+                            // });
+                        }
+                    }, this));
+                }
+            }, this));
+        }
     };
 
     function errorResult(text) {
@@ -624,7 +625,10 @@ define(function (require) {
             this.onCompilerSetDecorations(this.id, []);
         }
         this.outputEditor.updateOptions({
-            contextmenu: this.settings.useCustomContextMenu
+            contextmenu: this.settings.useCustomContextMenu,
+            minimap: {
+                enabled: this.settings.showMinimap
+            }
         });
     };
 
@@ -678,7 +682,8 @@ define(function (require) {
     };
 
     Compiler.prototype.onMouseMove = function (e) {
-        if (e === null || e.target === null || e.target.position === null) return;
+        if (e === null || e.target === null || e.target.position === null ||
+            e.target.position.lineNumber > this.outputEditor.getModel().getLineCount()) return;
         if (this.settings.hoverShowSource === true && this.assembly) {
             var desiredLine = e.target.position.lineNumber - 1;
             if (this.assembly[desiredLine]) {
@@ -753,12 +758,6 @@ define(function (require) {
                 });
             }
         );
-    };
-
-    Compiler.prototype.onThemeChange = function (newTheme) {
-        if (this.outputEditor)
-            this.outputEditor.updateOptions({theme: newTheme.monaco});
-        this.resize(); // in case anything changes size in the header or footer
     };
 
     return {
