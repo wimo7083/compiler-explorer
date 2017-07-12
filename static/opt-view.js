@@ -47,7 +47,11 @@ define(function (require) {
             readOnly: true,
             glyphMargin: true,
             quickSuggestions: false,
-            fixedOverflowWidgets: true
+            fixedOverflowWidgets: true,
+            minimap: {
+                maxColumn: 80
+            },
+            lineNumbersMinChars: 3
         });
 
         this._compilerid = state.id;
@@ -75,6 +79,7 @@ define(function (require) {
               this.showOptResults(state.optOutput);
         }
         this.setTitle();
+        this.eventHub.emit("optViewOpened", this._compilerid);
     }
 
     // TODO: de-dupe with compiler etc
@@ -118,11 +123,12 @@ define(function (require) {
         _.mapObject(results, function(value, key) {
             var linenumber = Number(key);
             var className = value.reduce(function(acc, x) {
-                if(acc && acc !== "Analysis" && x.optType !== acc) {
-                    return "Mixed";
-                } else {
-                    return x.optType;
+                if(x.optType == "Missed" || acc == "Missed") {
+                    return "Missed";
+                } else if(x.optType == "Passed" || acc == "Passed") {
+                    return "Passed";
                 }
+                return x.optType;
             },"");
             var contents = _.map(value, this.getDisplayableOpt, this);
             opt.push({

@@ -114,7 +114,13 @@ define(function (require) {
             readOnly: !!options.readOnly || legacyReadOnly,
             glyphMargin: true,
             quickSuggestions: false,
-            fixedOverflowWidgets: true
+            fixedOverflowWidgets: true,
+            minimap: {
+                maxColumn: 80
+            },
+            lineNumbersMinChars: 3,
+            emptySelectionClipboard: true,
+            autoIndent: true,
         });
 
         this.editor.addAction({
