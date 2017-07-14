@@ -260,7 +260,6 @@ function retryPromise(promiseFunc, name, maxFails, retryMs) {
     });
 }
 
-
 function findCompilers() {
     var exes = compilerProps("compilers", "/usr/bin/g++").split(":");
     var ndk = compilerProps('androidNdk');
@@ -339,7 +338,8 @@ function findCompilers() {
     }
 
     function compilerConfigFor(name, parentProps) {
-        var base = "compiler." + name;
+        const base = "compiler." + name,
+            exe = compilerProps(base + ".exe", name);
 
         function props(name, def) {
             return parentProps(base + "." + name, parentProps(name, def));
@@ -349,7 +349,7 @@ function findCompilers() {
         var supportsExecute = supportsBinary && !!props("supportsExecute", true);
         var compilerInfo = {
             id: name,
-            exe: compilerProps(base + ".exe", name),
+            exe: exe,
             name: props("name", name),
             alias: props("alias"),
             options: props("options"),
@@ -379,6 +379,9 @@ function findCompilers() {
             var groupName = name.substr(1);
 
             var props = function (name, def) {
+                if (name === "group") {
+                    return groupName;
+                }
                 return compilerProps("group." + groupName + "." + name, parentProps(name, def));
             };
 
