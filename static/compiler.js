@@ -66,7 +66,7 @@ define(function (require) {
         this.source = "";
         this.assembly = [];
         this.colours = [];
-        this.lastResult = null;
+        this.lastResult = {};
         this.pendingRequestSentAt = 0;
         this.nextRequest = null;
         this.settings = {};
@@ -111,12 +111,12 @@ define(function (require) {
             readOnly: true,
             language: 'asm',
             fontFamily: 'Fira Mono',
-            glyphMargin: true,
+            glyphMargin: !options.embedded,
             fixedOverflowWidgets: true,
             minimap: {
                 maxColumn: 80
             },
-            lineNumbersMinChars: 3
+            lineNumbersMinChars: options.embedded ? 1 : 5
         });
         this.outputEditor.addAction({
             id: 'viewsource',
@@ -291,7 +291,7 @@ define(function (require) {
         if (filters.binary && !this.compiler.supportsBinary) {
             delete filters.binary;
         }
-        if (filters.exeute && !this.compiler.supportsExecute) {
+        if (filters.execute && !this.compiler.supportsExecute) {
             delete filters.execute;
         }
         return filters;
@@ -451,7 +451,7 @@ define(function (require) {
         } else {
             this.outputEditor.updateOptions({
                 lineNumbers: true,
-                lineNumbersMinChars: 5,
+                lineNumbersMinChars: options.embedded ? 1 : 5,
                 glyphMargin: true
             });
         }
@@ -611,7 +611,7 @@ define(function (require) {
     };
 
     Compiler.prototype.onResendCompilation = function (id) {
-        if (id == this.id && this.lastResult) {
+        if (id == this.id && !$.isEmptyObject(this.lastResult)) {
             this.eventHub.emit('compileResult', this.id, this.compiler, this.lastResult);
         }
     };
@@ -648,7 +648,7 @@ define(function (require) {
         this.outputEditor.updateOptions({
             contextmenu: this.settings.useCustomContextMenu,
             minimap: {
-                enabled: this.settings.showMinimap
+                enabled: this.settings.showMinimap && !options.embedded
             }
         });
     };
