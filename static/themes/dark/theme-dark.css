@@ -63,6 +63,10 @@ body {
     border-radius: 0px 0px 3px 3px;
 }
 
+.linked-code-decoration-margin {
+    background: #433b4b !important;
+}
+
 .opcode {
     color: #066 !important;
 }
@@ -213,3 +217,8 @@ input.permalink {
 .conformance-wrapper {
     background-color: #1e1e1e !important;
 }
+
+.graph-placeholder {
+    background-color: #333333 !important;
+}
+

@@ -84,11 +84,14 @@ define(function (require) {
         this.nextRequest = null;
         this.settings = {};
         this.optViewOpen = false;
+        this.cfgViewOpen = false;
         this.wantOptInfo = state.wantOptInfo;
+        this.compilerSupportsCfg = false;
         this.decorations = {};
         this.prevDecorations = [];
         this.optButton = this.domRoot.find('.btn.view-optimization');
         this.astButton = this.domRoot.find('.btn.view-ast');
+        this.cfgButton = this.domRoot.find('.btn.view-cfg');
         this.libsButton = this.domRoot.find('.btn.show-libs');
 
         this.availableLibs = $.extend(true, {}, options.libs);
@@ -232,10 +235,12 @@ define(function (require) {
         this.eventHub.on('findCompilers', this.sendCompiler, this);
         this.eventHub.on('compilerSetDecorations', this.onCompilerSetDecorations, this);
         this.eventHub.on('settingsChange', this.onSettingsChange, this);
+        this.eventHub.on('optViewOpened', this.onOptViewOpened, this);
         this.eventHub.on('optViewClosed', this.onOptViewClosed, this);
         this.eventHub.on('astViewOpened', this.onAstViewOpened, this);
         this.eventHub.on('astViewClosed', this.onAstViewClosed, this);
-        this.eventHub.on('optViewOpened', this.onOptViewOpened, this);
+        this.eventHub.on('cfgViewOpened', this.onCfgViewOpened, this);
+        this.eventHub.on('cfgViewClosed', this.onCfgViewClosed, this);
         this.eventHub.on('resize', this.resize, this);
         this.eventHub.emit('requestSettings');
         this.sendCompiler();
@@ -269,6 +274,10 @@ define(function (require) {
             return Components.getAstViewWith(this.id, this.source, this.lastResult.astOutput, this.getCompilerName(), this.sourceEditorId);
         }, this);
 
+        var createCfgView = _.bind(function () {
+            return Components.getCfgViewWith(this.id, this.source, this.lastResult.cfg, this.getCompilerName(), this.sourceEditorId);
+        }, this);
+
         this.container.layoutManager.createDragSource(
             this.domRoot.find('.btn.add-compiler'), cloneComponent);
 
@@ -279,32 +288,30 @@ define(function (require) {
         }, this));
 
         this.container.layoutManager.createDragSource(
-            this.optButton, function () {
-                this.wantOptInfo = true;
-                this.compile();
-                return createOptView.apply(this);
-            }.bind(this));
+            this.optButton, createOptView);
 
         this.optButton.click(_.bind(function () {
-            this.wantOptInfo = true;
             var insertPoint = hub.findParentRowOrColumn(this.container) ||
                 this.container.layoutManager.root.contentItems[0];
             insertPoint.addChild(createOptView);
-            this.optButton.prop("disabled", true);
-            this.compile();
         }, this));
 
         this.container.layoutManager.createDragSource(
-            this.astButton, function () {
-                this.compile();
-                return createAstView.apply(this);
-            }.bind(this));
+            this.astButton, createAstView);
 
         this.astButton.click(_.bind(function () {
             var insertPoint = hub.findParentRowOrColumn(this.container) ||
                 this.container.layoutManager.root.contentItems[0];
             insertPoint.addChild(createAstView);
-            this.compile();
+        }, this));
+
+        this.container.layoutManager.createDragSource(
+            this.cfgButton, createCfgView);
+
+        this.cfgButton.click(_.bind(function () {
+            var insertPoint = hub.findParentRowOrColumn(this.container) ||
+                this.container.layoutManager.root.contentItems[0];
+            insertPoint.addChild(createCfgView);
         }, this));
 
 
@@ -612,7 +619,9 @@ define(function (require) {
         } else {
             compileTime.text("");
         }
+        this.compilerSupportsCfg = result.supportsCfg;
         this.eventHub.emit('compileResult', this.id, this.compiler, result);
+        this.updateButtons();
 
         if (this.nextRequest) {
             var next = this.nextRequest;
@@ -640,6 +649,7 @@ define(function (require) {
         if (this.id == id) {
             this.astButton.prop("disabled", true);
             this.astViewOpen = true;
+            this.compile();
         }
     };
 
@@ -654,6 +664,23 @@ define(function (require) {
             this.optViewOpen = true;
             this.wantOptInfo = true;
             this.optButton.prop("disabled", this.optViewOpen);
+            this.compile();
+        }
+    };
+
+    Compiler.prototype.onCfgViewOpened = function (id) {
+        if (this.id == id) {
+            this.cfgButton.prop("disabled", true);
+            this.cfgViewOpen = true;
+            this.compile();
+        }
+    };
+
+    Compiler.prototype.onCfgViewClosed = function (id, network) {
+        if (this.id == id) {
+            this.cfgButton.prop('disabled', false);
+            this.cfgViewOpen = false;
+            network.destroy();
         }
     };
 
@@ -681,6 +708,14 @@ define(function (require) {
         } else {
             this.optButton.prop("disabled", true);
         }
+
+        if (!this.cfgViewOpen) {
+            this.cfgButton.prop("disabled", !this.compilerSupportsCfg);
+        } else {
+            this.cfgButton.prop("disabled", true);
+        }
+
+
     };
 
     Compiler.prototype.onOptionsChange = function (options) {
@@ -895,15 +930,14 @@ define(function (require) {
 
             var getTokensForLine = function (model, line) {
                 //Force line's state to be accurate
+                if (line > model.getLineCount()) return [];
                 model.getLineTokens(line, /*inaccurateTokensAcceptable*/false);
                 // Get the tokenization state at the beginning of this line
                 var state = model._lines[line - 1].getState();
-                if (state) {
-                    var freshState = model._lines[line - 1].getState().clone();
-                    // Get the human readable tokens on this line
-                    return model._tokenizationSupport.tokenize(model.getLineContent(line), freshState, 0).tokens;
-                }
-                return [];
+                if (!state) return [];
+                var freshState = model._lines[line - 1].getState().clone();
+                // Get the human readable tokens on this line
+                return model._tokenizationSupport.tokenize(model.getLineContent(line), freshState, 0).tokens;
             };
 
             if (this.settings.hoverShowAsmDoc === true &&
