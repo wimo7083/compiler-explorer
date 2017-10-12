@@ -680,7 +680,6 @@ define(function (require) {
         if (this.id == id) {
             this.cfgButton.prop('disabled', false);
             this.cfgViewOpen = false;
-            network.destroy();
         }
     };
 
@@ -760,7 +759,7 @@ define(function (require) {
         _.each(this.availableLibs, function (library, name) {
             _.each(library.versions, function (version, ver) {
                 if (library.versions[ver].used) {
-                    libs.push({name, ver});
+                    libs.push({name: name, ver: ver});
                 }
             });
         });
@@ -901,9 +900,9 @@ define(function (require) {
         if (e === null || e.target === null || e.target.position === null) return;
         if (this.settings.hoverShowSource === true && this.assembly) {
             var hoverAsm = this.assembly[e.target.position.lineNumber - 1];
-            if (hoverAsm && hoverAsm.source && !hoverAsm.source.file) {
+            if (hoverAsm) {
                 // We check that we actually have something to show at this point!
-                this.eventHub.emit('editorSetDecoration', this.sourceEditorId, hoverAsm.source.line, false);
+                this.eventHub.emit('editorSetDecoration', this.sourceEditorId,  hoverAsm.source && !hoverAsm.source.file ? hoverAsm.source.line : -1, false);
             }
         }
         var currentWord = this.outputEditor.getModel().getWordAtPosition(e.target.position);
