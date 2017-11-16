@@ -53,14 +53,15 @@ var opts = nopt({
     'static': [String],
     'archivedVersions': [String],
     'noRemoteFetch': [Boolean],
-    'tmpDir': [String]
+    'tmpDir': [String],
+    'wsl': [Boolean]
 });
 
 if (opts.debug) logger.level = 'debug';
 
 // AP: Detect if we're running under Windows Subsystem for Linux. Temporary modification
 // of process.env is allowed: https://nodejs.org/api/process.html#process_process_env
-if (child_process.execSync('uname -a').toString().indexOf('Microsoft') > -1)
+if ((child_process.execSync('uname -a').toString().indexOf('Microsoft') > -1) && (opts.wsl))
     process.env.wsl = true;
 
 // AP: Allow setting of tmpDir (used in lib/base-compiler.js & lib/exec.js) through
@@ -79,12 +80,18 @@ var hostname = opts.host;
 var port = opts.port || 10240;
 var staticDir = opts.static || 'static';
 var archivedVersions = opts.archivedVersions;
-var gitReleaseName = child_process.execSync('git rev-parse HEAD').toString().trim();
+var gitReleaseName = "";
 var versionedRootPrefix = "";
-// Don't treat @ in paths as remote adresses
-var fetchCompilersFromRemote = !opts.noRemoteFetch;
+// Use the canned git_hash if provided
+if (opts.static && fs.existsSync(opts.static + "/git_hash")) {
+    gitReleaseName = fs.readFileSync(opts.static + "/git_hash").toString().trim();
+} else {
+    gitReleaseName = child_process.execSync('git rev-parse HEAD').toString().trim();
+}
 if (opts.static && fs.existsSync(opts.static + '/v/' + gitReleaseName))
     versionedRootPrefix = "v/" + gitReleaseName + "/";
+// Don't treat @ in paths as remote adresses
+var fetchCompilersFromRemote = !opts.noRemoteFetch;
 
 var propHierarchy = _.flatten([
     'defaults',

@@ -1,23 +1,17 @@
-ifneq "" "$(NODE_DIR)"
-NPM:=$(NODE_DIR)/bin/npm
-NODE:=$(NODE_DIR)/bin/node
+NODE_DIR?=/opt/compiler-explorer/node
+NPM:=$(shell env PATH=$(NODE_DIR)/bin:$(PATH) which npm)
+NODE:=$(shell env PATH=$(NODE_DIR)/bin:$(PATH) which node || env PATH=$(NODE_DIR)/bin:$(PATH) which nodejs)
 default: run
-else
-ifeq "" "$(shell which npm)"
-default:
-	@echo "Please install node.js"
-	@echo "Visit http://nodejs.org/ for more details"
-	@echo "On Ubuntu/Debian try: sudo apt-get install nodejs npm"
-	exit 1
-else
-NPM:= $(shell which npm)
-NODE:= $(shell which node || which nodejs)
-default: run
-endif
+
+NODE_VERSION:=$(shell $(NODE) --version)
+ifneq "$(shell echo $(NODE_VERSION) | cut -f1 -d.)" "v8"
+$(error Compiler Explorer needs node v8.x available. $(NODE_VERSION) was found. \
+Visit https://nodejs.org/ for installation instructions \
+To configure where we look for node, set NODE_DIR to its installation base)
 endif
 
 .PHONY: clean run test run-amazon c-preload optional-haskell-support optional-d-support optional-rust-support
-.PHONY: dist lint prereqs node_modules bower_modules
+.PHONY: dist lint prereqs node_modules bower_modules travis-dist
 prereqs: optional-haskell-support optional-d-support optional-rust-support node_modules c-preload bower_modules
 
 GDC?=gdc
@@ -89,6 +83,7 @@ dist: prereqs
 	rm -rf out/dist
 	$(NODE) ./node_modules/requirejs/bin/r.js -o app.build.js
 	# Move all assets to a versioned directory
+	echo $(HASH) > out/dist/git_hash
 	mkdir -p out/dist/v/$(HASH)
 	mv out/dist/main.js* out/dist/v/$(HASH)/
 	mv out/dist/explorer.css out/dist/v/$(HASH)/
@@ -104,6 +99,13 @@ dist: prereqs
 	    --source-map-url require.js.map \
 	    --source-map-root //v/$(HASH)/ext/requirejs \
 	    --prefix 6
+
+travis-dist: dist
+	tar --exclude './out/compilers' --exclude './.git' --exclude './static' --exclude './out/dist/ext' -Jcvf /tmp/ce-build.tar.xz . 
+	rm -rf out/dist-bin
+	mkdir -p out/dist-bin
+	mv /tmp/ce-build.tar.xz out/dist-bin/${TRAVIS_BUILD_NUMBER}.tar.xz
+	echo ${HASH} > out/dist-bin/${TRAVIS_BUILD_NUMBER}.txt
 
 c-preload:
 	$(MAKE) -C c-preload
