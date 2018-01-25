@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, Jared Wyles
+// Copyright (c) 2012-2018, Jared Wyles
 //
 // All rights reserved.
 //
@@ -28,12 +28,8 @@ define(function (require) {
 
     var FontScale = require('fontscale');
     var monaco = require('monaco');
-    var options = require('options');
     var _ = require('underscore');
     var $ = require('jquery');
-
-    require('asm-mode');
-    require('selectize');
 
     function Opt(hub, container, state) {
         state = state || {};
@@ -51,6 +47,7 @@ define(function (require) {
             readOnly: true,
             glyphMargin: true,
             quickSuggestions: false,
+            fontFamily: 'monospace',
             fixedOverflowWidgets: true,
             minimap: {
                 maxColumn: 80
@@ -71,8 +68,8 @@ define(function (require) {
         this.eventHub.on('settingsChange', this.onSettingsChange, this);
         this.eventHub.on('resize', this.resize, this);
         this.container.on('destroy', function () {
-            this.eventHub.emit("optViewClosed", this._compilerid);
             this.eventHub.unsubscribe();
+            this.eventHub.emit("optViewClosed", this._compilerid);
             this.optEditor.dispose();
         }, this);
         this.eventHub.emit('requestSettings');
@@ -151,22 +148,26 @@ define(function (require) {
     };
 
     Opt.prototype.onCompiler = function (id, compiler, options, editorid) {
-        if (compiler && !compiler.supportsOptOutput) {
-            this.code = this.optEditor.getValue();
-            this.optEditor.setValue("<" + compiler.version + " does not support the optimisation view>");
-            return;
-        }
-
-        if (id == this._compilerid) {
+        if (id === this._compilerid) {
             this._compilerName = compiler ? compiler.name : '';
-            this._editorid = editorid;
             this.setTitle();
+            if (compiler && !compiler.supportsOptOutput) {
+                this.code = this.optEditor.getValue();
+                this.optEditor.setValue("<" + compiler.version + " does not support the optimisation view>");
+                return;
+            }
+            this._editorid = editorid;
             this.optEditor.setValue(this.code);
         }
     };
-
     Opt.prototype.onCompilerClose = function (id) {
-        delete this.compilers[id];
+        if (id === this._compilerid) {
+            // We can't immediately close as an outer loop somewhere in GoldenLayout is iterating over
+            // the hierarchy. We can't modify while it's being iterated over.
+            _.defer(function (self) {
+                self.container.close();
+            }, this);
+        }
     };
 
     Opt.prototype.updateState = function () {

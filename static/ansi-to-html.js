@@ -26,6 +26,8 @@
 define(function (require) {
     'use strict';
 
+    var _ = require('underscore');
+
     var defaults = {
         fg: '#FFF',
         bg: '#000',
@@ -374,7 +376,7 @@ define(function (require) {
                 g1 = '0';
             }
 
-            g1 = g1.trimRight(';').split(';');
+            g1 = g1.replace(/;+$/, "").split(';');
 
             for (var o = 0, len = g1.length; o < len; o++) {
                 callback('display', g1[o]);
@@ -473,10 +475,9 @@ define(function (require) {
         options = options || {};
 
         if (options.colors) {
-            options.colors = Object.assign({}, defaults.colors, options.colors);
+            options.colors = _.extend(defaults.colors, options.colors);
         }
-
-        this.opts = Object.assign({}, defaults, options);
+        this.opts = _.extend({}, defaults, options);
         this.stack = [];
         this.stickyStack = [];
     }

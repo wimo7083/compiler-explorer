@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, Matt Godbolt
+// Copyright (c) 2012-2018, Matt Godbolt
 //
 // All rights reserved.
 // 
@@ -73,8 +73,12 @@ define(function (require) {
     var Alert = require('./alert');
     var themer = require('./themes');
 
-    function setupSettings(eventHub) {
-        var currentSettings = JSON.parse(local.get('settings', '{}'));
+    function setupSettings(hub) {
+        var eventHub = hub.layout.eventHub;
+        var defaultSettings = {
+            defaultLanguage: hub.subdomainLangId
+        };
+        var currentSettings = JSON.parse(local.get('settings', null)) || defaultSettings;
 
         function onChange(settings) {
             currentSettings = settings;
@@ -88,7 +92,7 @@ define(function (require) {
             eventHub.emit('settingsChange', currentSettings);
         });
 
-        var setSettings = settings($('#settings'), currentSettings, onChange);
+        var setSettings = settings($('#settings'), currentSettings, onChange, hub.subdomainLangId);
         eventHub.on('modifySettings', function (newSettings) {
             setSettings(_.extend(currentSettings, newSettings));
         });
@@ -99,9 +103,21 @@ define(function (require) {
 
         var options = require('options');
 
+        var subdomainPart = window.location.hostname.split('.')[0];
+        var langBySubdomain = _.find(options.languages, function (lang) {
+            return lang.id === subdomainPart || lang.alias.indexOf(subdomainPart) >= 0;
+        });
+        var subLangId = langBySubdomain ? langBySubdomain.id : null;
+
         var defaultConfig = {
             settings: {showPopoutIcon: false},
-            content: [{type: 'row', content: [Components.getEditor(1), Components.getCompiler(1)]}]
+            content: [{
+                type: 'row',
+                content: [
+                    Components.getEditor(1, subLangId),
+                    Components.getCompiler(1, subLangId)
+                ]
+            }]
         };
         
         $(window).bind('hashchange', function () {
@@ -140,11 +156,11 @@ define(function (require) {
         var hub;
         try {
             layout = new GoldenLayout(config, root);
-            hub = new Hub(layout);
+            hub = new Hub(layout, subLangId);
         } catch (e) {
             Raven.captureException(e);
             layout = new GoldenLayout(defaultConfig, root);
-            hub = new Hub(layout);
+            hub = new Hub(layout, subLangId);
         }
         layout.on('stateChanged', function () {
             var config = layout.toConfig();
@@ -170,7 +186,7 @@ define(function (require) {
 
         new clipboard('.btn.clippy');
 
-        setupSettings(layout.eventHub);
+        setupSettings(hub);
 
         sharing.initShareButton($('#share'), layout);
 

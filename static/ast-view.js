@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, Simon Brand
+// Copyright (c) 2012-2018, Simon Brand
 //
 // All rights reserved.
 //
@@ -31,15 +31,11 @@ define(function (require) {
     var _ = require('underscore');
     var $ = require('jquery');
 
-    require('asm-mode');
-    require('selectize');
-
     function Ast(hub, container, state) {
         this.container = container;
         this.eventHub = hub.createEventHub();
         this.domRoot = container.getElement();
         this.domRoot.html($('#ast').html());
-        this.compilers = {};
         this._currentDecorations = [];
         this.astEditor = monaco.editor.create(this.domRoot.find(".monaco-placeholder")[0], {
             value: "",
@@ -47,6 +43,7 @@ define(function (require) {
             language: 'cppp', //we only support cpp for now
             readOnly: true,
             glyphMargin: true,
+            fontFamily: 'monospace',
             quickSuggestions: false,
             fixedOverflowWidgets: true,
             minimap: {
@@ -69,8 +66,8 @@ define(function (require) {
         this.eventHub.emit('astViewOpened', this._compilerid);
         this.eventHub.emit('requestSettings');
         this.container.on('destroy', function () {
-            this.eventHub.emit("astViewClosed", this._compilerid);
             this.eventHub.unsubscribe();
+            this.eventHub.emit("astViewClosed", this._compilerid);
             this.astEditor.dispose();
         }, this);
 
@@ -125,8 +122,6 @@ define(function (require) {
     };
 
     Ast.prototype.onCompilerClose = function (id) {
-        // There must be a reason for this to be here
-        delete this.compilers[id];
         if (id === this._compilerid) {
             // We can't immediately close as an outer loop somewhere in GoldenLayout is iterating over
             // the hierarchy. We can't modify while it's being iterated over.

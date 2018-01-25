@@ -24,9 +24,9 @@
                 button.btn.save-button(type="button") Save to browser-local storage
             #load-file-system.tab-pane(role="tabpanel")
               label.btn.btn-default.btn-file Load from a local file
-                input.local-file(style="display:none" type="file")
-              label.btn.btn-default.btn-file(style="margin-left: 5px;") Save to file
-                input.save-file(style="display:none" type="button")
+                input.local-file(type="file")
+              label.btn.btn-default.btn-file.save-btn Save to file
+                input.save-file(type="button")
       .modal-footer
         button.btn.btn-default(type="button" data-dismiss="modal") Close
 
@@ -65,6 +65,15 @@
         .well.well-sm
           h4 Editor
           .form-group(role="group")
+            label
+              | Default language&nbsp;
+              small
+                span.glyphicon.glyphicon-info-sign(title="New editors only (Reset UI to clear yours)" aria-label="New editors only (Reset UI to clear yours)")
+              select.defaultLanguage
+            .checkbox
+              label
+                input.newEditorLastLang(type="checkbox")
+                | Use last selected language when opening new Editors
             .checkbox
               label
                 input.autoCloseBrackets(type="checkbox")

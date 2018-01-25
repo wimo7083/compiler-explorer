@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, Matt Godbolt
+// Copyright (c) 2012-2018, Matt Godbolt
 //
 // All rights reserved.
 //
@@ -58,7 +58,7 @@ define(function (require) {
         this.compilers = {};
 
         this.outputEditor = monaco.editor.createDiffEditor(this.domRoot.find(".monaco-placeholder")[0], {
-            fontFamily: 'Fira Mono',
+            fontFamily: 'monospace',
             scrollBeyondLastLine: false,
             readOnly: true,
             language: 'asm'

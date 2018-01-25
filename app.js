@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Copyright (c) 2012-2017, Matt Godbolt
+// Copyright (c) 2012-2018, Matt Godbolt
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without 
@@ -33,16 +33,14 @@ const nopt = require('nopt'),
     path = require('path'),
     fs = require('fs-extra'),
     http = require('http'),
-    https = require('https'),
     url = require('url'),
     _ = require('underscore-node'),
-    utils = require('./lib/utils'),
     express = require('express'),
     logger = require('./lib/logger').logger,
     Raven = require('raven');
 
 // Parse arguments from command line 'node ./app.js args...'
-var opts = nopt({
+const opts = nopt({
     'env': [String, Array],
     'rootDir': [String],
     'host': [String],
@@ -61,7 +59,7 @@ if (opts.debug) logger.level = 'debug';
 
 // AP: Detect if we're running under Windows Subsystem for Linux. Temporary modification
 // of process.env is allowed: https://nodejs.org/api/process.html#process_process_env
-if (child_process.execSync('uname -a').toString().indexOf('Microsoft') > -1)
+if ((process.platform === "win32") || child_process.execSync('uname -a').toString().indexOf('Microsoft') > -1)
     process.env.wsl = true;
 
 // AP: Allow setting of tmpDir (used in lib/base-compiler.js & lib/exec.js) through opts.
@@ -74,34 +72,34 @@ if (opts.tmpDir) {
 else if (process.env.wsl) {
     // Dec 2017 preview builds of WSL include /bin/wslpath; do the parsing work for now.
     // Parsing example %TEMP% is C:\Users\apardoe\AppData\Local\Temp
-    var windowsTemp = child_process.execSync('cmd.exe /c echo %TEMP%').toString().replace(/\\/g, "/");
-    var driveLetter = windowsTemp.substring(0, 1).toLowerCase();
-    var directoryPath = windowsTemp.substring(2).trim();
+    const windowsTemp = child_process.execSync('cmd.exe /c echo %TEMP%').toString().replace(/\\/g, "/");
+    const driveLetter = windowsTemp.substring(0, 1).toLowerCase();
+    const directoryPath = windowsTemp.substring(2).trim();
     process.env.winTmp = path.join("/mnt", driveLetter, directoryPath);
 }
 
 // Set default values for omitted arguments
-var rootDir = opts.rootDir || './etc';
-var env = opts.env || ['dev'];
-var hostname = opts.host;
-var port = opts.port || 10240;
-var staticDir = opts.static || 'static';
-var archivedVersions = opts.archivedVersions;
-var gitReleaseName = "";
-var versionedRootPrefix = "";
+const rootDir = opts.rootDir || './etc';
+const env = opts.env || ['dev'];
+const hostname = opts.host;
+const port = opts.port || 10240;
+const staticDir = opts.static || 'static';
+const archivedVersions = opts.archivedVersions;
+let gitReleaseName = "";
+let versionedRootPrefix = "";
 const wantedLanguage = opts.language || null;
 // Use the canned git_hash if provided
 if (opts.static && fs.existsSync(opts.static + "/git_hash")) {
     gitReleaseName = fs.readFileSync(opts.static + "/git_hash").toString().trim();
-} else {
+} else if (fs.existsSync('.git/')) { // Just if we have been cloned and not downloaded (Thanks David!)
     gitReleaseName = child_process.execSync('git rev-parse HEAD').toString().trim();
 }
 if (opts.static && fs.existsSync(opts.static + '/v/' + gitReleaseName))
     versionedRootPrefix = "v/" + gitReleaseName + "/";
 // Don't treat @ in paths as remote adresses
-var fetchCompilersFromRemote = !opts.noRemoteFetch;
+const fetchCompilersFromRemote = !opts.noRemoteFetch;
 
-var propHierarchy = _.flatten([
+const propHierarchy = _.flatten([
     'defaults',
     env,
     _.map(env, function (e) {
@@ -131,7 +129,9 @@ let languages = require('./lib/languages').list;
 if (wantedLanguage) {
     const filteredLangs = {};
     _.each(languages, lang => {
-        if (lang.id === wantedLanguage || lang.name === wantedLanguage) {
+        if (lang.id === wantedLanguage ||
+            lang.name === wantedLanguage ||
+            (lang.alias && lang.alias.indexOf(wantedLanguage) >= 0)) {
             filteredLangs[lang.id] = lang;
         }
     });
@@ -176,7 +176,9 @@ function compilerPropsAT(langs, transform, property, defaultValue) {
     return forLanguages;
 }
 
-var staticMaxAgeSecs = ceProps('staticMaxAgeSecs', 0);
+const staticMaxAgeSecs = ceProps('staticMaxAgeSecs', 0);
+const contentPolicy = ceProps('contentPolicy', 'default-src *');
+const maxUploadSize = ceProps('maxUploadSize', '1mb');
 let extraBodyClass = ceProps('extraBodyClass', '');
 
 function staticHeaders(res) {
@@ -185,8 +187,16 @@ function staticHeaders(res) {
     }
 }
 
-var awsProps = props.propsFor("aws");
-var awsPoller = null;
+const csp = require('./lib/csp').policy;
+
+function contentPolicyHeader(res) {
+    if (csp) {
+        res.setHeader('Content-Security-Policy-Report-Only', csp);
+    }
+}
+
+const awsProps = props.propsFor("aws");
+let awsPoller = null;
 
 function awsInstances() {
     if (!awsPoller) awsPoller = new aws.InstanceFetcher(awsProps);
@@ -195,7 +205,7 @@ function awsInstances() {
 
 // function to load internal binaries (i.e. lib/source/*.js)
 function loadSources() {
-    var sourcesDir = "lib/sources";
+    const sourcesDir = "lib/sources";
     return fs.readdirSync(sourcesDir)
         .filter(function (file) {
             return file.match(/.*\.js$/);
@@ -215,43 +225,47 @@ const SourceHandler = require('./lib/handlers/source').Handler;
 const sourceHandler = new SourceHandler(fileSources, staticHeaders);
 
 function ClientOptionsHandler(fileSources) {
-    const sources = _.sortBy(fileSources.map(function (source) {
+    const sources = _.sortBy(fileSources.map(source => {
         return {name: source.name, urlpart: source.urlpart};
-    }), "name");
+    }), 'name');
 
-    var supportsBinary = compilerPropsAT(languages, res => !!res, "supportsBinary", true);
-    var supportsExecute = supportsBinary && !!compilerPropsAT(languages, (res, lang) => supportsBinary[lang.id] && !!res, "supportsExecute", true);
-    var libs = {};
+    const supportsBinary = compilerPropsAT(languages, res => !!res, 'supportsBinary', true);
+    const supportsExecutePerLanguage = compilerPropsAT(languages, (res, lang) => supportsBinary[lang.id] && !!res, 'supportsExecute', true);
+    const supportsExecute = Object.values(supportsExecutePerLanguage).some((value) => value);
 
-    var baseLibs = compilerPropsA(languages, "libs");
-    _.each(baseLibs, function (forLang, lang) {
+    const libs = {};
+    const baseLibs = compilerPropsA(languages, 'libs');
+    _.each(baseLibs, (forLang, lang) => {
         if (lang && forLang) {
             libs[lang] = {};
-            _.each(forLang.split(':'), function (lib) {
-                libs[lang][lib] = {name: compilerPropsL(lang, 'libs.' + lib + '.name')};
+            _.each(forLang.split(':'), lib => {
+                const libBaseName = `libs.${lib}`;
+                libs[lang][lib] = {
+                    name: compilerPropsL(lang, libBaseName + '.name'),
+                    url: compilerPropsL(lang, libBaseName + '.url')
+                };
                 libs[lang][lib].versions = {};
-                var listedVersions = compilerPropsL(lang, "libs." + lib + '.versions');
+                const listedVersions = compilerPropsL(lang, libBaseName + '.versions');
                 if (listedVersions) {
-                    _.each(listedVersions.split(':'), function (version) {
+                    _.each(listedVersions.split(':'), version => {
+                        const libVersionName = libBaseName + `.versions.${version}`;
                         libs[lang][lib].versions[version] = {};
-                        libs[lang][lib].versions[version].version = compilerPropsL(lang, "libs." + lib + '.versions.' + version + '.version');
+                        libs[lang][lib].versions[version].version = compilerPropsL(lang, libVersionName + '.version');
                         libs[lang][lib].versions[version].path = [];
-                        var listedIncludes = compilerPropsL(lang, "libs." + lib + '.versions.' + version + '.path');
-                        if (listedIncludes) {
-                            _.each(listedIncludes.split(':'), function (path) {
-                                libs[lang][lib].versions[version].path.push(path);
-                            });
+                        const includes = compilerPropsL(lang, libVersionName + '.path');
+                        if (includes) {
+                            _.each(includes.split(':'), path => libs[lang][lib].versions[version].path.push(path));
                         } else {
-                            logger.warn("No paths found for " + lib + " version " + version);
+                            logger.warn(`No paths found for ${lib} - ${version}`);
                         }
                     });
                 } else {
-                    logger.warn("No versions found for " + lib + " library");
+                    logger.warn(`No versions found for ${lib} library`);
                 }
             });
         }
     });
-    var options = {
+    const options = {
         googleAnalyticsAccount: ceProps('clientGoogleAnalyticsAccount', 'UA-55180-6'),
         googleAnalyticsEnabled: ceProps('clientGoogleAnalyticsEnabled', false),
         sharingEnabled: ceProps('clientSharingEnabled', true),
@@ -274,26 +288,22 @@ function ClientOptionsHandler(fileSources) {
         cvCompilerCountMax: ceProps('cvCompilerCountMax', 6),
         defaultFontScale: ceProps('defaultFontScale', 1.0)
     };
-    this.setCompilers = function (compilers) {
-        options.compilers = compilers;
-    };
+    this.setCompilers = compilers => options.compilers = compilers;
     this.setCompilers([]);
     this.handler = function getClientOptions(req, res) {
         res.set('Content-Type', 'application/json');
         staticHeaders(res);
         res.end(JSON.stringify(options));
     };
-    this.get = function () {
-        return options;
-    };
+    this.get = () => options;
 }
 
 function retryPromise(promiseFunc, name, maxFails, retryMs) {
     return new Promise(function (resolve, reject) {
-        var fails = 0;
+        let fails = 0;
 
         function doit() {
-            var promise = promiseFunc();
+            const promise = promiseFunc();
             promise.then(function (arg) {
                 resolve(arg);
             }, function (e) {
@@ -313,7 +323,7 @@ function retryPromise(promiseFunc, name, maxFails, retryMs) {
 }
 
 function findCompilers() {
-    let exes = compilerPropsAT(languages, exs => _.compact(exs.split(":")), "compilers", "");
+    const exes = compilerPropsAT(languages, exs => _.compact(exs.split(":")), "compilers", "");
 
     const ndk = compilerPropsA(languages, 'androidNdk');
     _.each(ndk, (ndkPath, langId) => {
@@ -399,6 +409,7 @@ function findCompilers() {
 
         const supportsBinary = !!props("supportsBinary", true);
         const supportsExecute = supportsBinary && !!props("supportsExecute", true);
+        const group = props("group", "");
         const compilerInfo = {
             id: compilerName,
             exe: props("exe", compilerName),
@@ -415,7 +426,9 @@ function findCompilers() {
             supportsBinary: supportsBinary,
             supportsExecute: supportsExecute,
             postProcess: props("postProcess", "").split("|"),
-            lang: langId
+            lang: langId,
+            group: group,
+            groupName: props("groupName", "")
         };
         logger.debug("Found compiler", compilerInfo);
         return Promise.resolve(compilerInfo);
@@ -464,7 +477,7 @@ function findCompilers() {
             if (list.length !== 1) {
                 logger.error(`Compiler ID clash for '${id}' - used by ${
                     _.map(list, o => 'lang:' + o.lang + " name:" + o.name).join(', ')
-                }`);
+                    }`);
             }
         });
         return compilers;
@@ -485,8 +498,8 @@ function shortUrlHandler(req, res, next) {
     const googleUrl = `http://goo.gl/${encodeURIComponent(bits[1])}`;
     resolver.resolve(googleUrl)
         .then(resultObj => {
-            var parsed = url.parse(resultObj.longUrl);
-            var allowedRe = new RegExp(ceProps('allowedShortUrlHostRe'));
+            const parsed = url.parse(resultObj.longUrl);
+            const allowedRe = new RegExp(ceProps('allowedShortUrlHostRe'));
             if (parsed.host.match(allowedRe) === null) {
                 logger.warn(`Denied access to short URL ${bits[1]} - linked to ${resultObj.longUrl}`);
                 return next();
@@ -506,7 +519,7 @@ function shortUrlHandler(req, res, next) {
 Promise.all([findCompilers(), aws.initConfig(awsProps)])
     .then(args => {
         let compilers = args[0];
-        var prevCompilers;
+        let prevCompilers;
 
         const ravenPrivateEndpoint = aws.getConfig('ravenPrivateEndpoint');
         if (ravenPrivateEndpoint) {
@@ -517,16 +530,6 @@ Promise.all([findCompilers(), aws.initConfig(awsProps)])
             logger.info("Configured with raven endpoint", ravenPrivateEndpoint);
         } else {
             Raven.config(false).install();
-        }
-
-        const newRelicLicense = aws.getConfig('newRelicLicense');
-        if (newRelicLicense) {
-            process.env.NEW_RELIC_NO_CONFIG_FILE = true;
-            process.env.NEW_RELIC_APP_NAME = 'Compiler Explorer';
-            process.env.NEW_RELIC_LICENSE_KEY = newRelicLicense;
-            process.env.NEW_RELIC_LABELS = 'Languages:' + _.map(languages, languages => languages.name);
-            require('newrelic');
-            logger.info('New relic configured with license', newRelicLicense);
         }
 
         function onCompilerChange(compilers) {
@@ -540,18 +543,19 @@ Promise.all([findCompilers(), aws.initConfig(awsProps)])
             prevCompilers = compilers;
             clientOptionsHandler.setCompilers(compilers);
             apiHandler.setCompilers(compilers);
+            apiHandler.setLanguages(languages);
         }
 
         onCompilerChange(compilers);
 
-        var rescanCompilerSecs = ceProps('rescanCompilerSecs', 0);
+        const rescanCompilerSecs = ceProps('rescanCompilerSecs', 0);
         if (rescanCompilerSecs) {
             logger.info(`Rescanning compilers every ${rescanCompilerSecs} secs`);
             setInterval(() => findCompilers().then(onCompilerChange),
                 rescanCompilerSecs * 1000);
         }
 
-        var webServer = express(),
+        const webServer = express(),
             sFavicon = require('serve-favicon'),
             bodyParser = require('body-parser'),
             morgan = require('morgan'),
@@ -561,10 +565,10 @@ Promise.all([findCompilers(), aws.initConfig(awsProps)])
         logger.info("=======================================");
         logger.info("Listening on http://" + (hostname || 'localhost') + ":" + port + "/");
         logger.info("  serving static files from '" + staticDir + "'");
-        logger.info("  git release " + gitReleaseName);
+        if (gitReleaseName) logger.info("  git release " + gitReleaseName);
 
         function renderConfig(extra) {
-            var options = _.extend(extra, clientOptionsHandler.get());
+            const options = _.extend(extra, clientOptionsHandler.get());
             options.compilerExplorerOptions = JSON.stringify(options);
             options.root = versionedRootPrefix;
             options.extraBodyClass = extraBodyClass;
@@ -573,6 +577,7 @@ Promise.all([findCompilers(), aws.initConfig(awsProps)])
 
         const embeddedHandler = function (req, res) {
             staticHeaders(res);
+            contentPolicyHeader(res);
             res.render('embed', renderConfig({embedded: true}));
         };
         const healthCheck = require('./lib/handlers/health-check');
@@ -583,21 +588,23 @@ Promise.all([findCompilers(), aws.initConfig(awsProps)])
             .use('/healthcheck', new healthCheck.HealthCheckHandler().handle) // before morgan so healthchecks aren't logged
             .use(morgan('combined', {stream: logger.stream}))
             .use(compression())
-            .get('/', function (req, res) {
+            .get('/', (req, res) => {
                 staticHeaders(res);
+                contentPolicyHeader(res);
                 res.render('index', renderConfig({embedded: false}));
             })
             .get('/e', embeddedHandler)
             .get('/embed.html', embeddedHandler) // legacy. not a 301 to prevent any redirect loops between old e links and embed.html
-            .get('/embed-ro', function (req, res) {
+            .get('/embed-ro', (req, res) => {
                 staticHeaders(res);
+                contentPolicyHeader(res);
                 res.render('embed', renderConfig({embedded: true, readOnly: true}));
             })
-            .get('/robots.txt', function (req, res) {
+            .get('/robots.txt', (req, res) => {
                 staticHeaders(res);
                 res.end('User-agent: *\nSitemap: https://godbolt.org/sitemap.xml');
             })
-            .get('/sitemap.xml', function (req, res) {
+            .get('/sitemap.xml', (req, res) => {
                 staticHeaders(res);
                 res.set('Content-Type', 'application/xml');
                 res.render('sitemap');
@@ -612,12 +619,8 @@ Promise.all([findCompilers(), aws.initConfig(awsProps)])
             webServer.use('/v', express.static(archivedVersions, {maxAge: Infinity, index: false}));
         }
         webServer
-            .use(bodyParser.json({limit: ceProps('bodyParserLimit', '1mb')}))
-            .use(bodyParser.text({
-                limit: ceProps('bodyParserLimit', '1mb'), type: function () {
-                    return true;
-                }
-            }))
+            .use(bodyParser.json({limit: ceProps('bodyParserLimit', maxUploadSize)}))
+            .use(bodyParser.text({limit: ceProps('bodyParserLimit', maxUploadSize), type: () => true}))
             .use(restreamer())
             .get('/client-options.json', clientOptionsHandler.handler)
             .use('/source', sourceHandler.handle.bind(sourceHandler))
@@ -627,13 +630,11 @@ Promise.all([findCompilers(), aws.initConfig(awsProps)])
 
         webServer.use(Raven.errorHandler());
 
-        webServer.on('error', function (err) {
-            logger.error('Caught error:', err, "(in web error handler; continuing)");
-        });
+        webServer.on('error', err => logger.error('Caught error:', err, "(in web error handler; continuing)"));
 
         webServer.listen(port, hostname);
     })
-    .catch(function (err) {
+    .catch(err => {
         logger.error("Promise error:", err, "(shutting down)");
         process.exit(1);
     });

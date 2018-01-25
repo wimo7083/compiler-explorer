@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, Matt Godbolt
+// Copyright (c) 2012-2018, Matt Godbolt
 //
 // All rights reserved.
 //
@@ -8,9 +8,9 @@
 //     * Redistributions of source code must retain the above copyright notice,
 //       this list of conditions and the following disclaimer.
 //     * Redistributions in binary form must reproduce the above copyright
-//       notice, this list of conditions and the following disclaimer in the 
+//       notice, this list of conditions and the following disclaimer in the
 //       documentation and/or other materials provided with the distribution.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 // AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 // IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -34,12 +34,12 @@ define(function (require) {
     var monaco = require('monaco');
     var options = require('options');
     var Alert = require('alert');
+    var local = require('./local');
     require('./cppp-mode');
     require('./d-mode');
     require('./rust-mode');
     require('./ispc-mode');
     require('./haskell-mode');
-    require('./swift-mode');
     require('./pascal-mode');
     require('selectize');
 
@@ -53,7 +53,8 @@ define(function (require) {
         this.domRoot = container.getElement();
         this.domRoot.html($('#codeEditor').html());
         this.eventHub = hub.createEventHub();
-        this.settings = {};
+        // Should probably be its own function somewhere
+        this.settings = JSON.parse(local.get('settings', '{}'));
         this.ourCompilers = {};
 
         this.widgetsByCompiler = {};
@@ -67,26 +68,29 @@ define(function (require) {
         this.fadeTimeoutId = -1;
 
         this.editorSourceByLang = {};
-
         this.languageBtn = this.domRoot.find('.change-language');
-        this.needsLanguageUpdate = !(state.lang && languages[state.lang]);
         var langKeys = _.keys(languages);
+        // Ensure that the btn is disabled if we don't have nothing to select
+        // Note that is might be disabled for other reasons beforehand
         if (langKeys.length <= 1) {
             this.languageBtn.prop("disabled", true);
         }
-        this.currentLanguage = langKeys ?  languages[langKeys[0]] : null;
-        if (state.lang && languages[state.lang]) {
+        this.currentLanguage = languages[langKeys[0]];
+        this.waitingForLanguage = state.source && !state.lang;
+        if (languages[this.settings.defaultLanguage]) {
+            this.currentLanguage = languages[this.settings.defaultLanguage];
+        }
+        if (languages[state.lang]) {
             this.currentLanguage = languages[state.lang];
-        } else if (hub.lastOpenedLangId && languages[hub.lastOpenedLangId]) {
+        } else if (this.settings.newEditorLastLang && languages[hub.lastOpenedLangId]) {
             this.currentLanguage = languages[hub.lastOpenedLangId];
         }
-
         var root = this.domRoot.find(".monaco-placeholder");
         var legacyReadOnly = state.options && !!state.options.readOnly;
         this.editor = monaco.editor.create(root[0], {
             scrollBeyondLastLine: false,
             language: this.currentLanguage.monaco,
-            fontFamily: 'Fira Mono',
+            fontFamily: 'monospace',
             readOnly: !!options.readOnly || legacyReadOnly,
             glyphMargin: !options.embedded,
             quickSuggestions: false,
@@ -100,7 +104,7 @@ define(function (require) {
             autoIndent: true
         });
 
-        if (state.source) {
+        if (state.source !== undefined) {
             this.setSource(state.source);
         } else {
             this.updateEditorCode();
@@ -216,17 +220,20 @@ define(function (require) {
         this.fontScale = new FontScale(this.domRoot, state, this.editor);
         this.fontScale.on('change', _.bind(this.updateState, this));
 
+        var usableLanguages = _.filter(languages, function (language) {
+            return hub.compilerService.compilersByLang[language.id];
+        });
+
         this.languageBtn.selectize({
             sortField: 'name',
             valueField: 'id',
             labelField: 'name',
             searchField: ['name'],
-            options: _.map(languages, _.identity),
+            options: _.map(usableLanguages, _.identity),
             items: [this.currentLanguage.id]
         }).on('change', _.bind(function (e) {
             this.onLanguageChange($(e.target).val());
         }, this));
-
         this.changeLanguage = function (newLang) {
             this.languageBtn[0].selectize.setValue(newLang);
         };
@@ -237,7 +244,7 @@ define(function (require) {
         // * Only actually triggering a change if the document text has changed from
         //   the previous emitted.
         this.lastChangeEmitted = null;
-        this.onSettingsChange({});
+        this.onSettingsChange(this.settings);
         this.editor.getModel().onDidChangeContent(_.bind(function () {
             this.debouncedEmitChange();
             this.updateState();
@@ -274,7 +281,6 @@ define(function (require) {
         this.eventHub.on('conformanceViewOpen', this.onConformanceViewOpen, this);
         this.eventHub.on('conformanceViewClose', this.onConformanceViewClose, this);
         this.eventHub.on('resize', this.updateEditorLayout, this);
-        this.eventHub.emit('requestSettings');
 
         // NB a new compilerConfig needs to be created every time; else the state is shared
         // between all compilers created this way. That leads to some nasty-to-find state
@@ -284,9 +290,16 @@ define(function (require) {
         }, this);
 
         var addCompilerButton = this.domRoot.find('.btn.add-compiler');
+        var paneAdderDropdown = this.domRoot.find('.add-pane');
 
-        this.container.layoutManager.createDragSource(
-            addCompilerButton, compilerConfig);
+        var togglePaneAdder = function () {
+            paneAdderDropdown.dropdown('toggle');
+        };
+
+        this.container.layoutManager
+            .createDragSource(addCompilerButton, compilerConfig)
+            ._dragListener.on('dragStart', togglePaneAdder);
+
         addCompilerButton.click(_.bind(function () {
             var insertPoint = hub.findParentRowOrColumn(this.container) ||
                 this.container.layoutManager.root.contentItems[0];
@@ -300,24 +313,25 @@ define(function (require) {
 
         this.conformanceViewerButton = this.domRoot.find('.btn.conformance');
 
-        this.container.layoutManager.createDragSource(
-            this.conformanceViewerButton, conformanceConfig);
+        this.container.layoutManager
+            .createDragSource(this.conformanceViewerButton, conformanceConfig)
+            ._dragListener.on('dragStart', togglePaneAdder);
         this.conformanceViewerButton.click(_.bind(function () {
             var insertPoint = hub.findParentRowOrColumn(this.container) ||
                 this.container.layoutManager.root.contentItems[0];
             insertPoint.addChild(conformanceConfig);
         }, this));
-        this.container.setTitle(this.currentLanguage.name + " source #" + this.id);
-
+        this.updateTitle();
         this.eventHub.on('initialised', this.maybeEmitChange, this);
         this.updateState();
     }
 
-    Editor.prototype.maybeEmitChange = function (force) {
+    // If compilerId is undefined, every compiler will be pinged
+    Editor.prototype.maybeEmitChange = function (force, compilerId) {
         var source = this.getSource();
         if (!force && source === this.lastChangeEmitted) return;
         this.lastChangeEmitted = source;
-        this.eventHub.emit('editorChange', this.id, this.lastChangeEmitted, this.currentLanguage.id);
+        this.eventHub.emit('editorChange', this.id, this.lastChangeEmitted, this.currentLanguage.id, compilerId);
     };
 
     Editor.prototype.updateState = function () {
@@ -406,7 +420,7 @@ define(function (require) {
     Editor.prototype.onCompilerOpen = function (compilerId, editorId) {
         if (editorId === this.id) {
             // On any compiler open, rebroadcast our state in case they need to know it.
-            if (this.needsLanguageUpdate) {
+            if (this.waitingForLanguage) {
                 var glCompiler =_.find(this.container.layoutManager.root.getComponentsByName("compiler"), function (compiler) {
                     return compiler.id === compilerId;
                 });
@@ -415,23 +429,24 @@ define(function (require) {
                         return compiler.id === glCompiler.originalCompilerId;
                     });
                     if (selected) {
-                        this.needsLanguageUpdate = false;
                         this.changeLanguage(selected.lang);
                     }
                 }
             }
-            this.maybeEmitChange(true);
+            this.maybeEmitChange(true, compilerId);
             this.ourCompilers[compilerId] = true;
         }
     };
 
     Editor.prototype.onCompilerClose = function (compilerId) {
-        if (!this.ourCompilers[compilerId]) return;
-        monaco.editor.setModelMarkers(this.editor.getModel(), compilerId, []);
-        delete this.widgetsByCompiler[compilerId];
-        delete this.asmByCompiler[compilerId];
-        delete this.busyCompilers[compilerId];
-        this.numberUsedLines();
+        if (this.ourCompilers[compilerId]) {
+            monaco.editor.setModelMarkers(this.editor.getModel(), compilerId, []);
+            delete this.widgetsByCompiler[compilerId];
+            delete this.asmByCompiler[compilerId];
+            delete this.busyCompilers[compilerId];
+            delete this.ourCompilers[compilerId];
+            this.numberUsedLines();
+        }
     };
 
     Editor.prototype.onCompiling = function (compilerId) {
@@ -530,20 +545,28 @@ define(function (require) {
     };
 
     Editor.prototype.onLanguageChange = function (newLangId) {
-        if (newLangId !== this.currentLanguage.id && languages[newLangId]) {
-            var oldLangId = this.currentLanguage.id;
-            // Save the current source, so we can come back to it later
-            this.editorSourceByLang[oldLangId] = this.getSource();
-            this.currentLanguage = languages[newLangId];
-            this.initLoadSaver();
-            monaco.editor.setModelLanguage(this.editor.getModel(), this.currentLanguage.monaco);
-            // And now set the editor value to either the saved one or the default to the new lang
-            this.updateEditorCode();
-            this.container.setTitle(this.currentLanguage.name + " source #" + this.id);
-            this.updateState();
-            // Broadcast the change to other panels
-            this.eventHub.emit("languageChange", this.id, newLangId);
+        if (languages[newLangId]) {
+            if (newLangId !== this.currentLanguage.id) {
+                var oldLangId = this.currentLanguage.id;
+                this.currentLanguage = languages[newLangId];
+                if (!this.waitingForLanguage) {
+                    this.editorSourceByLang[oldLangId] = this.getSource();
+                    this.updateEditorCode();
+                }
+                this.initLoadSaver();
+                monaco.editor.setModelLanguage(this.editor.getModel(), this.currentLanguage.monaco);
+                this.updateTitle();
+                this.updateState();
+                // Broadcast the change to other panels
+                this.eventHub.emit("languageChange", this.id, newLangId);
+                this.maybeEmitChange(true);
+            }
+            this.waitingForLanguage = false;
         }
+    };
+
+    Editor.prototype.updateTitle = function () {
+        this.container.setTitle(this.currentLanguage.name + " source #" + this.id);
     };
 
     // Called every time we change language, so we get the relevant code

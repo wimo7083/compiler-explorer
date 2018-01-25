@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, Matt Godbolt
+// Copyright (c) 2012-2018, Matt Godbolt
 //
 // All rights reserved.
 //
@@ -49,11 +49,18 @@ define(function (require) {
     }
 
     CompilerService.prototype.getCompilersForLang = function (langId) {
-        return this.compilersByLang[langId];
+        return this.compilersByLang[langId] || {};
     };
 
     CompilerService.prototype.findCompiler = function (langId, compilerId) {
-        return this.getCompilersForLang(langId)[compilerId];
+        if (!compilerId) return null;
+        var compilers = this.getCompilersForLang(langId);
+        if (compilers && compilers[compilerId]) {
+            return compilers[compilerId];
+        }
+        return _.find(compilers, function (compiler) {
+            return compiler.alias === compilerId;
+        });
     };
 
     CompilerService.prototype.submit = function (request) {

@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, Matt Godbolt
+// Copyright (c) 2012-2018, Matt Godbolt
 //
 // All rights reserved.
 //
@@ -31,10 +31,7 @@ define(function () {
             return {
                 type: 'component',
                 componentName: 'compiler',
-                componentState: {
-                    source: editorId,
-                    lang: lang
-                }
+                componentState: {source: editorId, lang: lang}
             };
         },
         getCompilerWith: function (editorId, filters, options, compilerId) {
@@ -49,11 +46,11 @@ define(function () {
                 }
             };
         },
-        getEditor: function (id) {
+        getEditor: function (id, langId) {
             return {
                 type: 'component',
                 componentName: 'codeEditor',
-                componentState: {id: id}
+                componentState: {id: id, lang: langId}
             };
         },
         getEditorWith: function (id, source, options) {
@@ -149,13 +146,12 @@ define(function () {
                 componentState: {}
             };
         },
-        getCfgViewWith: function (id, compilerName, editorid) {
+        getCfgViewWith: function (id, editorid) {
             return {
                 type: 'component',
                 componentName: 'cfg',
                 componentState: {
                     id: id,
-                    compilerName: compilerName,
                     editorid: editorid
                 }
             };

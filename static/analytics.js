@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, Matt Godbolt
+// Copyright (c) 2012-2018, Matt Godbolt
 //
 // All rights reserved.
 // 
@@ -119,7 +119,7 @@ define(function (require) {
             }
 
             if (options.sharingEnabled) {
-                create_script_element('twitter-wjs', '//platform.twitter.com/widgets.js');
+                create_script_element('twitter-wjs', 'https://platform.twitter.com/widgets.js');
             }
         });
     }

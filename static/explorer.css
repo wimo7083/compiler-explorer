@@ -265,5 +265,31 @@ pre.content {
 }
 
 .change-language {
+    line-height: 14px;
     min-width: 100px !important;
+}
+
+.pane-dropdown button {
+    width: 100%;
+    text-align: left;
+}
+
+.full-compiler-name {
+    padding-left: 3px;
+}
+
+.header-fontscale {
+    padding-right: 1em;
+}
+
+.local-file {
+    display: none;
+}
+
+.save-file {
+    display: none;
+}
+
+.save-btn {
+    margin-left: 5px;
 }

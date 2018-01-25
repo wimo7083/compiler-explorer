@@ -26,6 +26,8 @@ Compiler Explorer is written in node.js.
 Assuming you have a compatible version of `node` installed, simply running `make` ought to get you up and running with an Explorer
 running on port 10240 on your local machine: http://localhost:10240/. Currently Compiler Explorer requires `node` v8 installed, either on the path or at `NODE_PATH` (an environment variable or `make` parameter).
 
+Running with `make EXTRA_ARGS='--language LANG'` will allow you to load `LANG` exclusively, where `LANG` is one for the language ids/aliases defined in `lib/languages.js`
+
 The `Makefile` will automatically install all the third party libraries needed to run; using `npm` to install server-side
 components and `bower` to install all the client-facing libraries.
 
@@ -58,14 +60,14 @@ Returns a list of the currently supported languages, as pairs of languages IDs a
 #### `GET /api/compilers` - return a list of compilers
 
 Returns a list of compilers. In text form, there's a simple formatting of the ID of the compiler, its
-description and its languge ID. In JSON, all the information is returned as an array of compilers, with the `id` key being the
+description and its language ID. In JSON, all the information is returned as an array of compilers, with the `id` key being the
 primary identifier of each compiler.
 
 
-#### `GET /api/compilers/<language-id>` - return a list of compilers with mstching language
+#### `GET /api/compilers/<language-id>` - return a list of compilers with matching language
 
 Returns a list of compilers for the provided language id. In text form, there's a simple formatting of the ID of the compiler, its
-description and its languge ID. In JSON, all the information is returned as an array of compilers, with the `id` key being the
+description and its language ID. In JSON, all the information is returned as an array of compilers, with the `id` key being the
 primary identifier of each compiler.
 
 #### `POST /api/compiler/<compiler-id>/compile` - perform a compilation
@@ -98,8 +100,8 @@ the HTML version.
 The text request is designed for simplicity for command-line clients like `curl`:
 
 ```bash
-$ curl 'https://gcc.godbolt.org/api/compiler/g63/compile?options=-Wall' --data-binary 'int foo() { return 1; }'
-# Compilation provided by Compiler Explorer at gcc.godbolt.org
+$ curl 'https://godbolt.org/api/compiler/g63/compile?options=-Wall' --data-binary 'int foo() { return 1; }'
+# Compilation provided by Compiler Explorer at godbolt.org
 foo():
         push    rbp
         mov     rbp, rsp
@@ -156,7 +158,7 @@ Compiler Explorer is maintained by [Matt Godbolt](http://xania.org), [Rubén Rin
 - [Jared Wyles](https://github.com/jaredwy) - Clang OPT Output view and maintenance
 - [Johan Engelen](https://github.com/JohanEngelen) - D support and its maintenance
 - [Chedy Najjar](https://github.com/CppChedy) - CFG View and maintenance
-- [Patrick Quist](https://github.com/partouf) - Pascal support
+- [Patrick Quist](https://github.com/partouf) - Pascal support, bug-fixes, windows support
 - [Joshua Sheard](https://github.com/jsheard) - ISPC support
 - [Marc Poulhiès](https://github.com/dkm) - GCC Dumps view
 - [Andrew Pardoe](https://github.com/AndrewPardoe) - WSL-CL support

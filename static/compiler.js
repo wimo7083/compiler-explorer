@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, Matt Godbolt
+// Copyright (c) 2012-2018, Matt Godbolt
 //
 // All rights reserved.
 //
@@ -38,13 +38,15 @@ define(function (require) {
     var monaco = require('monaco');
     var Alert = require('alert');
     var bigInt = require('big-integer');
+    var local = require('./local');
+    var Raven = require('raven-js');
     require('asm-mode');
 
     require('selectize');
 
     var OpcodeCache = new LruCache({
         max: 64 * 1024,
-        length:function (n) {
+        length: function (n) {
             return JSON.stringify(n).length;
         }
     });
@@ -64,6 +66,8 @@ define(function (require) {
         return filters;
     }
 
+    var languages = options.languages;
+
     function Compiler(hub, container, state) {
         this.container = container;
         this.eventHub = hub.createEventHub();
@@ -72,13 +76,26 @@ define(function (require) {
         this.domRoot.html($('#compiler').html());
         this.id = state.id || hub.nextCompilerId();
         this.sourceEditorId = state.source || 1;
-        this.currentLangId = state.lang || "c++";
-        this.originalCompilerId = state.compiler;
-        if (this.originalCompilerId) {
-            this.compiler = this.findCompiler(this.currentLangId, this.originalCompilerId);
+        this.settings = JSON.parse(local.get('settings', '{}'));
+        // If we don't have a language, but a compiler, find the corresponding language.
+        this.currentLangId = state.lang;
+        if (!this.currentLangId && state.compiler) {
+            this.currentLangId = this.langOfCompiler(state.compiler);
         }
-        if (!this.compiler) {
+        if (!this.currentLangId && languages[this.settings.defaultLanguage]) {
+            this.currentLangId = languages[this.settings.defaultLanguage].id;
+        }
+        if (!this.currentLangId) {
+            this.currentLangId = _.keys(languages)[0];
+        }
+        this.originalCompilerId = state.compiler;
+        if (state.compiler)
+            this.compiler = this.findCompiler(this.currentLangId, state.compiler);
+        else
             this.compiler = this.findCompiler(this.currentLangId, options.defaultCompiler[this.currentLangId]);
+        if (!this.compiler) {
+            var compilers = this.compilerService.compilersByLang[this.currentLangId];
+            if (compilers) this.compiler = _.values(compilers)[0];
         }
         this.infoByLang = {};
         this.deferCompiles = hub.deferred;
@@ -91,11 +108,9 @@ define(function (require) {
         this.lastResult = {};
         this.pendingRequestSentAt = 0;
         this.nextRequest = null;
-        this.settings = {};
         this.optViewOpen = false;
         this.cfgViewOpen = false;
         this.wantOptInfo = state.wantOptInfo;
-        this.compilerSupportsCfg = false;
         this.decorations = {};
         this.prevDecorations = [];
         this.optButton = this.domRoot.find('.btn.view-optimization');
@@ -107,7 +122,7 @@ define(function (require) {
         this.compileClearCache = this.domRoot.find('.clear-cache');
 
         this.availableLibs = {};
-        this.updateAvailableLibs = function() {
+        this.updateAvailableLibs = function () {
             if (!this.availableLibs[this.currentLangId]) {
                 this.availableLibs[this.currentLangId] = $.extend(true, {}, options.libs[this.currentLangId]);
             }
@@ -122,13 +137,23 @@ define(function (require) {
         }, this));
 
         this.linkedFadeTimeoutId = -1;
+        this.getGroupsInUse = function () {
+            var currentLangCompilers = _.map(this.getCurrentLangCompilers(), _.identity, this);
+            return _.map(_.uniq(currentLangCompilers, false, function (compiler) {
+                return compiler.group;
+            }), function (compiler) {
+                return {value: compiler.group, label: compiler.groupName || compiler.group};
+            });
+        };
 
         this.domRoot.find('.compiler-picker').selectize({
             sortField: 'name',
             valueField: 'id',
             labelField: 'name',
             searchField: ['name'],
-            options: _.map(this.getCurrentLangCompilers(), _.identity),
+            optgroupField: 'group',
+            optgroups: this.getGroupsInUse(),
+            options: _.map(this.getCurrentLangCompilers(), _.identity, this),
             items: this.compiler ? [this.compiler.id] : []
         }).on('change', _.bind(function (e) {
             var val = $(e.target).val();
@@ -150,15 +175,13 @@ define(function (require) {
             .on('change', optionsChange)
             .on('keyup', optionsChange);
 
-        // Hide the binary option if the global options has it disabled.
-        this.domRoot.find('[data-bind=\'binary\']').toggle(options.supportsBinary);
-        this.domRoot.find('[data-bind=\'execute\']').toggle(options.supportsExecute);
+        this.domRoot.find("[data-bind='execute']").toggle(options.supportsExecute);
 
         this.outputEditor = monaco.editor.create(this.domRoot.find('.monaco-placeholder')[0], {
             scrollBeyondLastLine: false,
             readOnly: true,
             language: 'asm',
-            fontFamily: 'Fira Mono',
+            fontFamily: '"Fira Mono", monospace',
             glyphMargin: !options.embedded,
             fixedOverflowWidgets: true,
             minimap: {
@@ -237,11 +260,7 @@ define(function (require) {
 
         this.filters.on('change', _.bind(this.onFilterChange, this));
 
-        container.on('destroy', function () {
-            this.eventHub.unsubscribe();
-            this.eventHub.emit('compilerClose', this.id);
-            this.outputEditor.dispose();
-        }, this);
+        container.on('destroy', this.close, this);
         container.on('resize', this.resize, this);
         container.on('shown', this.resize, this);
         container.on('open', function () {
@@ -255,6 +274,7 @@ define(function (require) {
         this.eventHub.on('findCompilers', this.sendCompiler, this);
         this.eventHub.on('compilerSetDecorations', this.onCompilerSetDecorations, this);
         this.eventHub.on('settingsChange', this.onSettingsChange, this);
+
         this.eventHub.on('optViewOpened', this.onOptViewOpened, this);
         this.eventHub.on('optViewClosed', this.onOptViewClosed, this);
         this.eventHub.on('astViewOpened', this.onAstViewOpened, this);
@@ -274,8 +294,13 @@ define(function (require) {
                 this.eventHub.emit('filtersChange', this.id, this.getEffectiveFilters());
             }
         }, this);
+        this.eventHub.on('requestCompiler', function (id) {
+            if (id === this.id) {
+                this.sendCompiler();
+            }
+        }, this);
         this.eventHub.on('languageChange', this.onLanguageChange, this);
-        this.eventHub.emit('requestSettings');
+        this.onSettingsChange(this.settings);
         this.sendCompiler();
         this.updateCompilerName();
         this.updateButtons();
@@ -312,11 +337,17 @@ define(function (require) {
         }, this);
 
         var createCfgView = _.bind(function () {
-            return Components.getCfgViewWith(this.id, this.getCompilerName(), this.sourceEditorId);
+            return Components.getCfgViewWith(this.id, this.sourceEditorId);
         }, this);
 
-        this.container.layoutManager.createDragSource(
-            this.domRoot.find('.btn.add-compiler'), cloneComponent);
+        var panerDropdown = this.domRoot.find('.pane-dropdown');
+        var togglePannerAdder = function () {
+            panerDropdown.dropdown('toggle');
+        };
+
+        this.container.layoutManager
+            .createDragSource(this.domRoot.find('.btn.add-compiler'), cloneComponent)
+            ._dragListener.on('dragStart', togglePannerAdder);
 
         this.domRoot.find('.btn.add-compiler').click(_.bind(function () {
             var insertPoint = hub.findParentRowOrColumn(this.container) ||
@@ -324,8 +355,9 @@ define(function (require) {
             insertPoint.addChild(cloneComponent);
         }, this));
 
-        this.container.layoutManager.createDragSource(
-            this.optButton, createOptView);
+        this.container.layoutManager
+            .createDragSource(this.optButton, createOptView)
+            ._dragListener.on('dragStart', togglePannerAdder);
 
         this.optButton.click(_.bind(function () {
             var insertPoint = hub.findParentRowOrColumn(this.container) ||
@@ -333,8 +365,9 @@ define(function (require) {
             insertPoint.addChild(createOptView);
         }, this));
 
-        this.container.layoutManager.createDragSource(
-            this.astButton, createAstView);
+        this.container.layoutManager
+            .createDragSource(this.astButton, createAstView)
+            ._dragListener.on('dragStart', togglePannerAdder);
 
         this.astButton.click(_.bind(function () {
             var insertPoint = hub.findParentRowOrColumn(this.container) ||
@@ -342,8 +375,9 @@ define(function (require) {
             insertPoint.addChild(createAstView);
         }, this));
 
-        this.container.layoutManager.createDragSource(
-            this.gccDumpButton, createGccDumpView);
+        this.container.layoutManager
+            .createDragSource(this.gccDumpButton, createGccDumpView)
+            ._dragListener.on('dragStart', togglePannerAdder);
 
         this.gccDumpButton.click(_.bind(function () {
             var insertPoint = hub.findParentRowOrColumn(this.container) ||
@@ -351,8 +385,9 @@ define(function (require) {
             insertPoint.addChild(createGccDumpView);
         }, this));
 
-        this.container.layoutManager.createDragSource(
-            this.cfgButton, createCfgView);
+        this.container.layoutManager
+            .createDragSource(this.cfgButton, createCfgView)
+            ._dragListener.on('dragStart', togglePannerAdder);
 
         this.cfgButton.click(_.bind(function () {
             var insertPoint = hub.findParentRowOrColumn(this.container) ||
@@ -384,10 +419,17 @@ define(function (require) {
             }
         }, this));
 
+        this.onSettingsChange(this.settings);
         this.eventHub.on('initialised', this.undefer, this);
 
         this.saveState();
     }
+
+    Compiler.prototype.close = function () {
+        this.eventHub.unsubscribe();
+        this.eventHub.emit('compilerClose', this.id);
+        this.outputEditor.dispose();
+    };
 
     Compiler.prototype.undefer = function () {
         this.deferCompiles = false;
@@ -436,11 +478,12 @@ define(function (require) {
                     treeDump: this.treeDumpEnabled,
                     rtlDump: this.rtlDumpEnabled
                 },
-                produceOptInfo: this.wantOptInfo
+                produceOptInfo: this.wantOptInfo,
+                produceCfg: this.cfgViewOpen
             },
             filters: this.getEffectiveFilters()
         };
-        _.each(this.availableLibs, function (lib) {
+        _.each(this.availableLibs[this.currentLangId], function (lib) {
             _.each(lib.versions, function (version) {
                 if (version.used) {
                     _.each(version.path, function (path) {
@@ -614,7 +657,6 @@ define(function (require) {
         } else {
             this.compileTimeLabel.text('');
         }
-        this.compilerSupportsCfg = result.supportsCfg;
         this.eventHub.emit('compileResult', this.id, this.compiler, result);
         this.updateButtons();
 
@@ -625,8 +667,8 @@ define(function (require) {
         }
     };
 
-    Compiler.prototype.onEditorChange = function (editor, source) {
-        if (editor === this.sourceEditorId) {
+    Compiler.prototype.onEditorChange = function (editor, source, langId, compilerId) {
+        if (editor === this.sourceEditorId && langId === this.currentLangId && (compilerId === undefined || compilerId === this.id)) {
             this.source = source;
             this.compile();
         }
@@ -731,18 +773,15 @@ define(function (require) {
         // We can support intel output if the compiler supports it, or if we're compiling
         // to binary (as we can disassemble it however we like).
         var intelAsm = this.compiler.supportsIntel || filters.binary;
-        this.domRoot.find('[data-bind=\'intel\']').toggleClass('disabled', !intelAsm);
+        this.domRoot.find("[data-bind='intel']").prop('disabled', !intelAsm);
         // Disable binary support on compilers that don't work with it.
-        this.domRoot.find('[data-bind=\'binary\']')
-            .toggleClass('disabled', !this.compiler.supportsBinary);
-        this.domRoot.find('[data-bind=\'execute\']')
-            .toggleClass('disabled', !this.compiler.supportsExecute);
+        this.domRoot.find("[data-bind='binary']").prop('disabled', !this.compiler.supportsBinary);
+        this.domRoot.find("[data-bind='execute']").prop('disabled', !this.compiler.supportsExecute);
         // Disable demangle for compilers where we can't access it
-        this.domRoot.find('[data-bind=\'demangle\']')
-            .toggleClass('disabled', !this.compiler.demangler);
+        this.domRoot.find("[data-bind='demangle']").prop('disabled', !this.compiler.demangler);
         // Disable any of the options which don't make sense in binary mode.
         var filtersDisabled = !!filters.binary && !this.compiler.supportsFiltersInBinary;
-        this.domRoot.find('.nonbinary').toggleClass('disabled', filtersDisabled);
+        this.domRoot.find('.nonbinary').prop('disabled', filtersDisabled);
         // If its already open, we should turn the it off.
         // The pane will update with error text
         // Other wise we just disable the button.
@@ -753,7 +792,7 @@ define(function (require) {
         }
 
         if (!this.cfgViewOpen) {
-            this.cfgButton.prop('disabled', !this.compilerSupportsCfg);
+            this.cfgButton.prop('disabled', !this.compiler.supportsCfg);
         } else {
             this.cfgButton.prop('disabled', true);
         }
@@ -790,6 +829,7 @@ define(function (require) {
         if (editor === this.sourceEditorId) {
             // We can't immediately close as an outer loop somewhere in GoldenLayout is iterating over
             // the hierarchy. We can't modify while it's being iterated over.
+            this.close();
             _.defer(function (self) {
                 self.container.close();
             }, this);
@@ -805,7 +845,7 @@ define(function (require) {
 
     Compiler.prototype.currentState = function () {
         var libs = [];
-        _.each(this.availableLibs, function (library, name) {
+        _.each(this.availableLibs[this.currentLangId], function (library, name) {
             _.each(library.versions, function (version, ver) {
                 if (library.versions[ver].used) {
                     libs.push({name: name, ver: ver});
@@ -851,14 +891,15 @@ define(function (require) {
     };
 
     Compiler.prototype.updateCompilerName = function () {
+        var langName = options.languages[this.currentLangId].name;
         var compilerName = this.getCompilerName();
         var compilerVersion = this.compiler ? this.compiler.version : '';
-        this.container.setTitle(compilerName + ' (Editor #' + this.sourceEditorId + ', Compiler #' + this.id + ')');
+        this.container.setTitle(compilerName + ' (Editor #' + this.sourceEditorId + ', Compiler #' + this.id + ') ' + langName);
         this.domRoot.find('.full-compiler-name').text(compilerVersion);
     };
 
     Compiler.prototype.onResendCompilation = function (id) {
-        if (id == this.id && !$.isEmptyObject(this.lastResult)) {
+        if (id === this.id && !$.isEmptyObject(this.lastResult)) {
             this.eventHub.emit('compileResult', this.id, this.compiler, this.lastResult);
         }
     };
@@ -1047,7 +1088,7 @@ define(function (require) {
         this.libsButton.popover({
             container: 'body',
             content: _.bind(function () {
-                var libsCount = Object.keys(this.availableLibs[this.currentLangId]).length;
+                var libsCount = _.keys(this.availableLibs[this.currentLangId]).length;
                 if (libsCount === 0) {
                     return $('<p></p>')
                         .text('No libs configured for ' + options.languages[this.currentLangId].name + ' yet. ')
@@ -1100,11 +1141,21 @@ define(function (require) {
 
                 _.each(this.availableLibs[this.currentLangId], function (lib, libKey) {
                     var libsList = getNextList();
+                    var libHeader = $('<span></span>')
+                        .text(lib.name + ' ')
+                        .addClass('lib-header');
+                    if (lib.url && lib.url.length >= 1) {
+                        libHeader.append($('<a></a>')
+                            .prop('href', lib.url)
+                            .prop('target', '_blank')
+                            .prop('rel', 'noopener noreferrer')
+                            .append($('<small><span></span></small>')
+                                .addClass('glyphicon glyphicon-new-window')
+                            )
+                        );
+                    }
                     var libCat = $('<li></li>')
-                        .append($('<span></span>')
-                            .text(lib.name)
-                            .addClass('lib-header')
-                        )
+                        .append(libHeader)
                         .addClass('lib-item');
 
                     var libGroup = $('<div></div>');
@@ -1154,8 +1205,10 @@ define(function (require) {
                 compiler: this.compiler && this.compiler.id ? this.compiler.id : options.defaultCompiler[oldLangId],
                 options: this.options
             };
-            this.updateCompilersSelector();
             this.updateLibsDropdown();
+            this.updateCompilersSelector();
+            this.updateCompilerName();
+            this.saveState();
         }
     };
 
@@ -1165,14 +1218,18 @@ define(function (require) {
 
     Compiler.prototype.updateCompilersSelector = function () {
         var selector = this.domRoot.find('.compiler-picker')[0].selectize;
-        selector.clearOptions();
+        selector.clearOptions(true);
+        selector.clearOptionGroups();
+        _.each(this.getGroupsInUse(), function (group) {
+            selector.addOptionGroup(group.value, {label: group.label});
+        }, this);
         selector.load(_.bind(function (callback) {
-            callback(_.map(this.getCurrentLangCompilers(), _.identity));
+            callback(_.map(this.getCurrentLangCompilers(), _.identity, this));
         }, this));
-        var defaultOrFirst = _.bind(function defaultOrFirst () {
+        var defaultOrFirst = _.bind(function defaultOrFirst() {
             // If the default is a valid compiler, return it
             var defaultCompiler = options.defaultCompiler[this.currentLangId];
-            if (defaultCompiler && options.compilers[defaultCompiler]) return defaultCompiler;
+            if (defaultCompiler) return defaultCompiler;
             // Else try to find the first one for this language
             var value = _.find(options.compilers, _.bind(function (compiler) {
                 return compiler.lang === this.currentLangId;
@@ -1182,12 +1239,25 @@ define(function (require) {
             return value && value.id ? value.id : "";
         }, this);
         var info = this.infoByLang[this.currentLangId] || {};
-        selector.setValue([info.compiler || defaultOrFirst()]);
-        this.optionsField.val(info.options || "");
+        this.compiler = this.findCompiler(this.currentLangId, info.compiler || defaultOrFirst());
+        if (this.compiler) selector.setValue([this.compiler.id], true);
+        this.options = info.options || "";
+        this.optionsField.val(this.options);
     };
 
     Compiler.prototype.findCompiler = function (langId, compilerId) {
         return this.compilerService.findCompiler(langId, compilerId);
+    };
+
+    Compiler.prototype.langOfCompiler = function (compilerId) {
+        var compiler = _.find(options.compilers, function (compiler) {
+            return compiler.id === compilerId || compiler.alias === compilerId;
+        });
+        if (!compiler) {
+            Raven.captureMessage('Unable to find compiler id "' + compilerId + '"');
+            compiler = options.compilers[0];
+        }
+        return compiler.lang;
     };
 
     return {

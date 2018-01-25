@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, Matt Godbolt
+// Copyright (c) 2012-2018, Matt Godbolt
 //
 // All rights reserved.
 //
@@ -29,6 +29,7 @@ define(function (require) {
     var _ = require('underscore');
     var colour = require('./colour');
     var themes = require('./themes').themes;
+    var options = require('./options');
 
     function Setting(elem, name, Control, param) {
         this.elem = elem;
@@ -79,7 +80,7 @@ define(function (require) {
         elem.slider('setValue', value);
     };
 
-    function setupSettings(root, settings, onChange) {
+    function setupSettings(root, settings, onChange, langId) {
         settings = settings || {};
 
         var settingsObjs = [];
@@ -111,7 +112,8 @@ define(function (require) {
         add(colourSchemeSelect, 'colourScheme', colour.schemes[0].name, Select,
             _.map(colour.schemes, function (scheme) {
                 return {label: scheme.name, desc: scheme.desc};
-            }));
+            })
+        );
         // Handle older settings
         if (settings.delayAfterChange === 0) {
             settings.delayAfterChange = 750;
@@ -163,6 +165,26 @@ define(function (require) {
             }
             colourSchemeSelect.trigger('change');
         }
+
+        var langs = options.languages;
+
+        var defaultLanguageSelector = root.find('.defaultLanguage');
+        var defLang = settings.defaultLanguage || _.keys(langs)[0] || 'c++';
+        add(defaultLanguageSelector, 'defaultLanguage', defLang, Select,
+            _.map(langs, function (lang) {
+                return {label: lang.id, desc: lang.name};
+            })
+        );
+
+        defaultLanguageSelector.val(defLang);
+        if (langId) {
+            defaultLanguageSelector
+                .prop('disabled', true)
+                .prop('title', 'Default language inherited from subdomain')
+                .css('cursor', 'not-allowed');
+        }
+
+        add(root.find('.newEditorLastLang'), 'newEditorLastLang', true, Checkbox);
 
         function setSettings(settings) {
             onSettingsChange(settings);
