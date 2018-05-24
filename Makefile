@@ -114,6 +114,17 @@ travis-dist: dist
 	mv /tmp/ce-build.tar.xz out/dist-bin/${TRAVIS_BUILD_NUMBER}.tar.xz
 	echo ${HASH} > out/dist-bin/${TRAVIS_BUILD_NUMBER}.txt
 
+out/lambda.zip: $(wildcard lambda/*)
+	mkdir -p out
+	cd lambda && zip -X -r ../out/lambda.zip .
+
+lambda-bundle: out/lambda.zip
+.PHONY: lambda-bundle
+
+update-lambda: out/lambda.zip
+	aws lambda update-function-code --function-name execute --zip-file fileb://out/lambda.zip
+.PHONY: update-lambda
+
 c-preload:
 	$(MAKE) -C c-preload
 
