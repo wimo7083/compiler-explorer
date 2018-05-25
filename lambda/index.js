@@ -31,6 +31,7 @@ const aws = require('aws-sdk');
 const fs = require('fs');
 const s3 = new aws.S3({apiVersion: '2006-03-01'});
 const exec = require('../lib/exec');
+const quote = require('shell-quote');
 
 function fetchFromS3(bucket, key, localName) {
     return new Promise((resolve, reject) => {
@@ -67,9 +68,10 @@ exports.handler = (event, context, callback) => {
     const key = `cache/binary/${sha}.tar.gz`; // TODO get from config
     const tempDir = fs.mkdtempSync('/tmp/exec');
     const localFile = `/tmp/${sha}`;
+    const args = quote.parse(event.queryStringParameters.arguments || "");
     fetchFromS3(bucket, key, localFile)
         .then(() => exec.execute('tar', ['zxf', localFile, '-C', tempDir]))
-        .then(() => exec.execute(tempDir + '/test', [], {customCwd: tempDir, timeoutMs: 5000}))
+        .then(() => exec.execute(tempDir + '/bash', args, {customCwd: tempDir, timeoutMs: 5000}))
         .then((result) => {
             const response = {
                 statusCode: 200,
