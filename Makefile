@@ -114,15 +114,15 @@ travis-dist: dist
 	mv /tmp/ce-build.tar.xz out/dist-bin/${TRAVIS_BUILD_NUMBER}.tar.xz
 	echo ${HASH} > out/dist-bin/${TRAVIS_BUILD_NUMBER}.txt
 
-out/lambda.zip: $(wildcard lambda/*)
-	mkdir -p out
-	cd lambda && zip -X -r ../out/lambda.zip .
+static/dist/lambda.zip: $(wildcard lambda/*) node_modules
+	$(NODE) node_modules/webpack/bin/webpack.js ${WEBPACK_ARGS} --config lambda/webpack.config.js
+	cd static/dist/lambda && zip -X -r ../lambda.zip .
 
-lambda-bundle: out/lambda.zip
+lambda-bundle: static/dist/lambda.zip
 .PHONY: lambda-bundle
 
-update-lambda: out/lambda.zip
-	aws lambda update-function-code --function-name execute --zip-file fileb://out/lambda.zip
+update-lambda: static/dist/lambda.zip
+	aws lambda update-function-code --function-name execute --zip-file fileb://static/dist/lambda.zip
 .PHONY: update-lambda
 
 c-preload:
