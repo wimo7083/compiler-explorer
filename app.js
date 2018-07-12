@@ -72,8 +72,6 @@ if (process.platform === "linux" && child_process.execSync('uname -a').toString(
 if (opts.tmpDir) {
     process.env.tmpDir = opts.tmpDir;
     process.env.winTmp = opts.tmpDir;
-} else if (process.platform === "win32") {
-    process.env.tmpDir = process.env.TEMP;
 } else if (process.env.wsl) {
     // Dec 2017 preview builds of WSL include /bin/wslpath; do the parsing work for now.
     // Parsing example %TEMP% is C:\Users\apardoe\AppData\Local\Temp
