@@ -18,40 +18,15 @@ here on, CE) to live:
 git clone https://github.com/ubsan/compiler-explorer.git
 ```
 
-Then, we'll need to make a configuration file which points at your compilers and
-include directories. Copy the following into a new file,
-`etc\config\c++.local.properties`:
+Then, we'll need to make a configuration file
+which points at your compilers and include directories.
+Copy `etc\config\c++.nicole.properties` to a new file,
+`etc\config\c++.local.properties`.
 
-```
-includePath=C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Tools\MSVC\14.14.26428\ATLMFC\include;C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Tools\MSVC\14.14.26428\include;C:\Program Files (x86)\Windows Kits\10\include\10.0.17134.0\ucrt;C:\Program Files (x86)\Windows Kits\10\include\10.0.17134.0\shared;C:\Program Files (x86)\Windows Kits\10\include\10.0.17134.0\um;C:\Program Files (x86)\Windows Kits\10\include\10.0.17134.0\winrt;C:\Program Files (x86)\Windows Kits\10\include\10.0.17134.0\cppwinrt
-compiler.clang_32.exe=C:\Program Files\LLVM\bin\clang++.exe
-compiler.clang_64.exe=C:\Program Files\LLVM\bin\clang++.exe
-compiler.vc2017_32.exe=C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Tools\MSVC\14.14.26428\bin\Hostx64\x86\cl.exe
-compiler.vc2017_64.exe=C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Tools\MSVC\14.14.26428\bin\Hostx64\x64\cl.exe
-```
-
-These variables point to the correct locations on my personal machine, and
-should work for anybody who has installed the Enterprise version of Visual
-Studio 2017, and has put everything in the default place. You probably need
-change the variables to point at your own setup.
-
-First, `includePath`; use `echo %INCLUDE%` from a developer command prompt, copy
-the result, and replace my paths with yours.
-
-Second, `compiler.clang_32` and `compiler.clang_64` - these should be the same.
-If it's in your path, you can use `where clang++`; if not, you'll have to find
-your installation manually. If you don't have clang installed, you can remove
-those lines.
-
-Third, `compiler.vc2017_32` and `compiler.vc2017_64`; I recommend just looking
-in explorer for your `cl.exe`.  Hopefully, I'll write a batch file eventually to
-set this up for you, and if you have any questions, please ask on teams or
-discord.
-
-This should give you a complete, if basic setup. If you want to add more
-compilers, look at my own personal configuration file, located at
-`etc\config\c++.nicole.properties`; this should give you guidance on your
-journey.
+These variables point to the correct locations on my personal machine.
+You probably need change the variables to point at your own setup.
+Read the comments in the file to learn what to do.
+If you have any questions, please ping me on discord or teams.
 
 
 ## Actually Running the danged thing
