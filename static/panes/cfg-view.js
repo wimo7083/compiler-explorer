@@ -27,10 +27,10 @@
 var $ = require('jquery');
 var vis = require('vis');
 var _ = require('underscore');
-var Toggles = require('./toggles');
+var Toggles = require('../toggles');
+var ga = require('../analytics');
 
 require('selectize');
-require("vis/dist/vis.css");
 
 function Cfg(hub, container, state) {
     this.container = container;
@@ -129,6 +129,12 @@ function Cfg(hub, container, state) {
     };
     this.updateButtons();
     this.setTitle();
+    ga.proxy('send', {
+        hitType: 'event',
+        eventCategory: 'ViewPane',
+        eventAction: 'Open',
+        eventValue: 'Cfg'
+    });
 }
 
 Cfg.prototype.onCompileResult = function (id, compiler, result) {
@@ -376,4 +382,3 @@ Cfg.prototype.currentState = function () {
 module.exports = {
     Cfg: Cfg
 };
-

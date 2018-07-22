@@ -24,21 +24,22 @@
 "use strict";
 var _ = require('underscore');
 var $ = require('jquery');
-var colour = require('colour');
-var loadSaveLib = require('loadSave');
-var FontScale = require('fontscale');
-var Components = require('components');
-var monaco = require('monaco');
-var options = require('options');
-var Alert = require('alert');
-var local = require('./local');
-require('./cppp-mode');
-require('./d-mode');
-require('./rust-mode');
-require('./ispc-mode');
-require('./haskell-mode');
-require('./pascal-mode');
-require('./cuda-mode');
+var colour = require('../colour');
+var loadSaveLib = require('../loadSave');
+var FontScale = require('../fontscale');
+var Components = require('../components');
+var monaco = require('../monaco');
+var options = require('../options');
+var Alert = require('../alert');
+var local = require('../local');
+var ga = require('../analytics');
+require('../modes/cppp-mode');
+require('../modes/d-mode');
+require('../modes/rust-mode');
+require('../modes/ispc-mode');
+require('../modes/haskell-mode');
+require('../modes/pascal-mode');
+require('../modes/cuda-mode');
 require('selectize');
 
 var loadSave = new loadSaveLib.LoadSave();
@@ -99,8 +100,6 @@ function Editor(hub, state, container) {
         this.updateEditorCode();
     }
 
-    this.initLoadSaver();
-
     var startFolded = /^[/*#;]+\s*setup.*/;
     if (state.source && state.source.match(startFolded)) {
         // With reference to https://github.com/Microsoft/monaco-editor/issues/115
@@ -145,6 +144,12 @@ function Editor(hub, state, container) {
 
     this.updateTitle();
     this.updateState();
+    ga.proxy('send', {
+        hitType: 'event',
+        eventCategory: 'ViewPane',
+        eventAction: 'Open',
+        eventValue: 'Editor'
+    });
 }
 
 // If compilerId is undefined, every compiler will be pinged
@@ -290,6 +295,15 @@ Editor.prototype.initButtons = function (state) {
     }, this));
 
     this.hideable = this.domRoot.find('.hideable');
+
+    this.loadSaveButton = this.domRoot.find('.load-save');
+    this.initLoadSaver();
+    $(this.domRoot).keydown(_.bind(function (event) {
+        if ((event.ctrlKey || event.metaKey) && String.fromCharCode(event.which).toLowerCase() === 's') {
+            event.preventDefault();
+            this.showLoadSaver();
+        }
+    }, this));
 };
 
 Editor.prototype.changeLanguage = function (newLang) {
@@ -647,8 +661,12 @@ Editor.prototype.onConformanceViewClose = function (editorId) {
     }
 };
 
+Editor.prototype.showLoadSaver = function () {
+    this.loadSaveButton.click();
+};
+
 Editor.prototype.initLoadSaver = function () {
-    this.domRoot.find('.load-save')
+    this.loadSaveButton
         .off('click')
         .click(_.bind(function () {
             loadSave.run(_.bind(function (text) {

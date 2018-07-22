@@ -23,12 +23,13 @@
 // POSSIBILITY OF SUCH DAMAGE.
 "use strict";
 
-var FontScale = require('fontscale');
-var monaco = require('monaco');
+var FontScale = require('../fontscale');
+var monaco = require('../monaco');
 var _ = require('underscore');
 var $ = require('jquery');
+var ga = require('../analytics');
 
-require('asm-mode');
+require('../modes/asm-mode');
 require('selectize');
 
 function Opt(hub, container, state) {
@@ -68,6 +69,12 @@ function Opt(hub, container, state) {
     }
     this.setTitle();
     this.eventHub.emit("optViewOpened", this._compilerid);
+    ga.proxy('send', {
+        hitType: 'event',
+        eventCategory: 'ViewPane',
+        eventAction: 'Open',
+        eventValue: 'Opt'
+    });
 }
 
 Opt.prototype.onEditorChange = function (id, source) {

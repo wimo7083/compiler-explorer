@@ -25,20 +25,20 @@
 'use strict';
 var $ = require('jquery');
 var _ = require('underscore');
-var ga = require('analytics').ga;
-var colour = require('colour');
-var Toggles = require('toggles');
-var FontScale = require('fontscale');
+var ga = require('../analytics');
+var colour = require('../colour');
+var Toggles = require('../toggles');
+var FontScale = require('../fontscale');
 var Promise = require('es6-promise').Promise;
-var Components = require('components');
+var Components = require('../components');
 var LruCache = require('lru-cache');
-var options = require('options');
-var monaco = require('monaco');
-var Alert = require('alert');
+var options = require('../options');
+var monaco = require('../monaco');
+var Alert = require('../alert');
 var bigInt = require('big-integer');
-var local = require('./local');
+var local = require('../local');
 var Raven = require('raven-js');
-require('asm-mode');
+require('../modes/asm-mode');
 
 require('selectize');
 
@@ -128,7 +128,7 @@ function Compiler(hub, container, state) {
     }).on('change', _.bind(function (e) {
         var val = $(e.target).val();
         if (val) {
-            ga('send', {
+            ga.proxy('send', {
                 hitType: 'event',
                 eventCategory: 'SelectCompiler',
                 eventAction: val
@@ -151,6 +151,12 @@ function Compiler(hub, container, state) {
     this.updateButtons();
     this.updateLibsDropdown();
     this.saveState();
+    ga.proxy('send', {
+        hitType: 'event',
+        eventCategory: 'ViewPane',
+        eventAction: 'Open',
+        eventValue: 'Compiler'
+    });
 }
 
 Compiler.prototype.clearEditorsLinkedLines = function () {
@@ -455,8 +461,14 @@ Compiler.prototype.sendCompile = function (request) {
         })
         .catch(function (x) {
             clearTimeout(progress);
+            var message = "Unknown error";
+            if (_.isString(x)) {
+                message = x;
+            } else if (x) {
+                message = x.error || x.code;
+            }
             onCompilerResponse(request,
-                errorResult('<Compilation failed: ' + x ? (x.code ? x.code : x) : "Unknown error" + '>'), false);
+                errorResult('<Compilation failed: ' + message + '>'), false);
         });
 };
 
@@ -537,14 +549,14 @@ Compiler.prototype.onCompileResponse = function (request, result, cached) {
     var timeTaken = Math.max(0, Date.now() - this.pendingRequestSentAt);
     var wasRealReply = this.pendingRequestSentAt > 0;
     this.pendingRequestSentAt = 0;
-    ga('send', {
+    ga.proxy('send', {
         hitType: 'event',
         eventCategory: 'Compile',
         eventAction: request.compiler,
         eventLabel: request.options.userArguments,
         eventValue: cached ? 1 : 0
     });
-    ga('send', {
+    ga.proxy('send', {
         hitType: 'timing',
         timingCategory: 'Compile',
         timingVar: request.compiler,

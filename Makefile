@@ -57,7 +57,7 @@ endif
 ifneq "" "$(shell which cargo)"
 rust/bin/rustfilt: rust/src/main.rs rust/Cargo.lock rust/Cargo.toml
 	cd rust && cargo build --release && cargo install --root . --force && cargo clean
-optional-rust-support: rust/bin/rustfilt 
+optional-rust-support: rust/bin/rustfilt
 else
 optional-rust-support:
 	@echo "Rust language support disabled"
@@ -96,9 +96,9 @@ run: prereqs
 	$(NODE) ./node_modules/.bin/supervisor -w app.js,lib,etc/config -e 'js|node|properties' --exec $(NODE) $(NODE_ARGS) -- ./app.js $(EXTRA_ARGS)
 
 dev: export NODE_ENV=DEV
-dev: prereqs
+dev: prereqs install-git-hooks
 	 $(NODE) ./node_modules/.bin/supervisor -w app.js,lib,etc/config -e 'js|node|properties' --exec $(NODE) $(NODE_ARGS) -- ./app.js $(EXTRA_ARGS)
-	
+
 
 HASH := $(shell git rev-parse HEAD)
 dist: export WEBPACK_ARGS=-p
@@ -108,9 +108,10 @@ dist: prereqs
 	mkdir -p out/dist/vs
 	cp -r static/dist/ out/dist/
 	cp -r static/vs/ out/dist/
+	cp -r static/policies/ out/dist/
 
 travis-dist: dist
-	tar --exclude './.travis-compilers' --exclude './.git' --exclude './static' -Jcf /tmp/ce-build.tar.xz . 
+	tar --exclude './.travis-compilers' --exclude './.git' --exclude './static' -Jcf /tmp/ce-build.tar.xz .
 	rm -rf out/dist-bin
 	mkdir -p out/dist-bin
 	mv /tmp/ce-build.tar.xz out/dist-bin/${TRAVIS_BUILD_NUMBER}.tar.xz
