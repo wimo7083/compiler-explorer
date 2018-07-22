@@ -22,7 +22,7 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-const asmCl = require('../lib/asm-cl');
+const asmCl = require('../lib/asm-parser-vc');
 require('chai').should();
 
 describe('ASM CL parser', () => {

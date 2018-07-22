@@ -24,7 +24,7 @@
 
 const fs = require('fs');
 const asm = require('../lib/asm');
-const asmCl = require('../lib/asm-cl');
+const asmCl = require('../lib/asm-parser-vc');
 const utils = require('../lib/utils');
 require('chai').should();
 
