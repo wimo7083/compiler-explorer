@@ -198,31 +198,6 @@ const sourceHandler = new SourceHandler(fileSources, staticHeaders);
 const CompilerFinder = require('./lib/compiler-finder');
 const compilerFinder = new CompilerFinder(compileHandler, compilerProps, awsProps, defArgs);
 
-function shortUrlHandler(req, res, next) {
-    const resolver = new google.ShortLinkResolver(aws.getConfig('googleApiKey'));
-    const bits = req.url.split("/");
-    if (bits.length !== 2 || req.method !== "GET") return next();
-    const googleUrl = `http://goo.gl/${encodeURIComponent(bits[1])}`;
-    resolver.resolve(googleUrl)
-        .then(resultObj => {
-            const parsed = url.parse(resultObj.longUrl);
-            const allowedRe = new RegExp(ceProps('allowedShortUrlHostRe'));
-            if (parsed.host.match(allowedRe) === null) {
-                logger.warn(`Denied access to short URL ${bits[1]} - linked to ${resultObj.longUrl}`);
-                return next();
-            }
-            res.writeHead(301, {
-                Location: resultObj.id,
-                'Cache-Control': 'public'
-            });
-            res.end();
-        })
-        .catch(e => {
-            logger.error(`Failed to expand ${googleUrl} - ${e}`);
-            next();
-        });
-}
-
 function startListening(server) {
     const ss = systemdSocket();
     let _port;
@@ -389,14 +364,35 @@ Promise.all([compilerFinder.find(), aws.initConfig(awsProps)])
                 res.render('sitemap');
             })
             .use(sFavicon(path.join(defArgs.staticDir, webpackConfig.output.publicPath, 'favicon.ico')));
-
+        const allowedShortUrlRe = new RegExp(ceProps('allowedShortUrlHostRe'));
         webServer
             .use(bodyParser.json({limit: ceProps('bodyParserLimit', maxUploadSize)}))
             .use(bodyParser.text({limit: ceProps('bodyParserLimit', maxUploadSize), type: () => true}))
             .use(restreamer())
             .use('/source', sourceHandler.handle.bind(sourceHandler))
             .use('/api', apiHandler.handle)
-            .use('/g', shortUrlHandler);
+            .use('/g', (req, res, next) => {
+                const resolver = new google.ShortLinkResolver(aws.getConfig('googleApiKey'));
+                const bits = req.url.split("/");
+                if (bits.length !== 2 || req.method !== "GET") return next();
+                const googleUrl = `http://goo.gl/${encodeURIComponent(bits[1])}`;
+                resolver.resolve(googleUrl)
+                    .then(resultObj => {
+                        const parsed = url.parse(resultObj.longUrl);
+                        if (parsed.host.match(allowedShortUrlRe) === null) {
+                            logger.warn(`Denied access to short URL ${bits[1]} - linked to ${resultObj.longUrl}`);
+                            return next();
+                        }
+                        staticHeaders(res);
+                        contentPolicyHeader(res);
+                        res.render('index', renderConfig({embedded: false, ogDescription:'Hello, world!'}));
+                        res.end();
+                    })
+                    .catch(e => {
+                        logger.error(`Failed to expand ${googleUrl} - ${e}`);
+                        next();
+                    });
+            });
         if (!defArgs.doCache) {
             logger.info("  not caching due to --noCache parameter being present");
         }
