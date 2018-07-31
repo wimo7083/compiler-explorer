@@ -62,6 +62,8 @@
           span 11010
         button.btn.btn-godbolt.btn-sm(title="Execute the binary" data-bind="execute")
           span ./a.out
+        button.btn.btn-godbolt.btn-sm.active.nonbinary(title="Filter functions from headers from the output" data-bind="libraryCode")
+          span .cpp:
         button.btn.btn-godbolt.btn-sm.active.nonbinary(title="Filter unused labels from the output" data-bind="labels")
           span .LX0:
         button.btn.btn-godbolt.btn-sm.active.nonbinary(title="Filter all assembler directives from the output" data-bind="directives")
