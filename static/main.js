@@ -92,7 +92,6 @@ require("monaco-loader")().then(function () {
 
     function setupButtons(options) {
         var alertSystem = new Alert();
-
         if (options.policies.cookies.enabled) {
             var cookiemodal = null;
 

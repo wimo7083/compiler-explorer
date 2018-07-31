@@ -16,6 +16,9 @@
   },
   "main": "./app.js",
   "dependencies": {
+    "@types/fs-extra": "^5.0.4",
+    "@types/underscore": "^1.8.8",
+    "@types/winston": "^2.3.9",
     "aws-sdk": "^2.177.0",
     "big-integer": "^1.6.25",
     "body-parser": "^1.18.2",
@@ -52,6 +55,7 @@
     "systemd-socket": "0.0.0",
     "temp": "0.8.x",
     "tree-kill": "^1.2.0",
+    "typescript": "^3.0.1",
     "uglifyjs-webpack-plugin": "^1.1.8",
     "underscore": "^1.8.3",
     "vis": "4.20.1",
