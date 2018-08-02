@@ -22,30 +22,35 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-const fs = require('fs'),
-    logger = require('./logger').logger,
-    _ = require('underscore'),
-    path = require('path');
+import {logger} from './logger';
+import * as fs from 'fs-extra';
+import * as _ from 'underscore';
+import * as path from 'path';
 
-let properties = {};
+import {CELanguage_t, CELanguages_t} from "./languages";
 
-let hierarchy = [];
+type CEProperty = string | number | boolean;
+type CEProperties = { [id: string]: CEProperty };
+
+let properties: { [id: string]: CEProperties } = {};
+
+let hierarchy: string[] = [];
 
 let propDebug = false;
 
-function findProps(base, elem) {
+function findProps(base: string, elem: string): CEProperties {
     const name = base + '.' + elem;
     return properties[name];
 }
 
-function debug(string) {
+function debug(string: string) {
     if (propDebug) logger.info(`prop: ${string}`);
 }
 
-function get(base, property, defaultValue) {
+function get(base: string, property: string, defaultValue?: any): CEProperty {
     let result = defaultValue;
     let source = 'default';
-    hierarchy.forEach(elem => {
+    hierarchy.forEach((elem: string) => {
         const propertyMap = findProps(base, elem);
         if (propertyMap && property in propertyMap) {
             debug(`${base}.${property}: overriding ${source} value (${result}) with ${propertyMap[property]}`);
@@ -57,7 +62,7 @@ function get(base, property, defaultValue) {
     return result;
 }
 
-function toProperty(prop) {
+function toProperty(prop: string): CEProperty {
     if (prop === 'true' || prop === 'yes') return true;
     if (prop === 'false' || prop === 'no') return false;
     if (prop.match(/^-?(0|[1-9][0-9]*)$/)) return parseInt(prop);
@@ -65,9 +70,9 @@ function toProperty(prop) {
     return prop;
 }
 
-function parseProperties(blob, name) {
-    const props = {};
-    blob.split('\n').forEach((line, index) => {
+function parseProperties(blob: string, name: string): CEProperties {
+    const props: CEProperties = {};
+    blob.split('\n').forEach((line: string, index: number) => {
         line = line.replace(/#.*/, '').trim();
         if (!line) return;
         let split = line.match(/([^=]+)=(.*)/);
@@ -81,7 +86,7 @@ function parseProperties(blob, name) {
     return props;
 }
 
-function initialize(directory, hier) {
+function initialize(directory: string, hier: string[]) {
     if (hier === null) throw new Error('Must supply a hierarchy array');
     hierarchy = _.map(hier, x => x.toLowerCase());
     logger.info(`Reading properties from ${directory} with hierarchy ${hierarchy}`);
@@ -97,11 +102,13 @@ function initialize(directory, hier) {
     logger.debug("props.properties = ", properties);
 }
 
-function propsFor(base) {
-    return function (property, defaultValue) {
+function propsFor(base: string) {
+    return function (property: string, defaultValue?: any) {
         return get(base, property, defaultValue);
     };
 }
+
+type propsFn_t = typeof propsFor;
 
 // function mappedOf(fn, funcA, funcB) {
 //     const resultA = funcA();
@@ -112,6 +119,9 @@ function propsFor(base) {
 /***
  * Compiler property fetcher
  */
+
+export type ceProps_t = (id: string, def?:any) => CEProperty;
+
 class CompilerProps {
     /***
      * Creates a CompilerProps lookup function
@@ -119,7 +129,10 @@ class CompilerProps {
      * @param {CELanguages} languages - Supported languages
      * @param {function} ceProps - propsFor function to get Compiler Explorer values from
      */
-    constructor(languages, ceProps) {
+    languages: CELanguages_t;
+    ceProps: ceProps_t;
+    propsByLangId: {[id: string]: propsFn_t};
+    constructor(languages:CELanguages_t, ceProps: ceProps_t) {
         this.languages = languages;
         this.propsByLangId = {};
 
@@ -150,14 +163,14 @@ class CompilerProps {
      * @param {?function} fn - Transformation to give to each value found
      * @returns {*} Transformed value(s) found or fn(defaultValue)
      */
-    get(langs, key, defaultValue, fn = _.identity) {
+    get(langs: null | string | CELanguage_t | CELanguages_t, key: string, defaultValue?: any, fn: (...args: any[]) => any = _.identity) {
         fn = fn || _.identity;
         if (_.isEmpty(langs)) {
             return fn(this.ceProps(key, defaultValue));
         }
         if (!_.isString(langs)) {
             return _.chain(langs)
-                .map(lang => [lang.id, fn(this.$getInternal(lang.id, key, defaultValue), lang)])
+                .map((lang: CELanguage_t) => [lang.id, fn(this.$getInternal(lang.id, key, defaultValue), lang)])
                 .object()
                 .value();
         } else {
