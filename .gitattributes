@@ -2,3 +2,4 @@ docs/*  linguist-documentation
 *.s linguist-generated
 lib/handlers/asm-docs.js linguist-generated
 test/cases/* linguist-generated
+* text=auto
